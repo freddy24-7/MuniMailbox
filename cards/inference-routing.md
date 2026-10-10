@@ -1,6 +1,6 @@
 # Hybrid local/cloud inference routing
 
-**Status:** Overview · **Stages:** 2, 4 · **Requirements:** FR-13, FR-14 · **Code:** `app/inference/router.py`, `app/inference/`
+**Status:** Stage 2 notes added, questions open · **Stages:** 2, 4 · **Requirements:** FR-13, FR-14 · **Code:** `app/inference/router.py`, `app/inference/`
 
 ## In one sentence
 Every model call in the app goes through one router that decides *which* model answers
@@ -44,4 +44,42 @@ first. It is also where cost, latency and model choice are decided and recorded.
 [pii-redaction](pii-redaction.md) · [audit-trail-hash-chain](audit-trail-hash-chain.md) · [grounded-drafting-and-quality](grounded-drafting-and-quality.md) · [observability](observability.md)
 
 ## Notes from the build
-_Empty — filled in during Stage 2._
+### Stage 2 — 2026-10-10
+
+**What was built**
+- [app/inference/router.py](../app/inference/router.py): `InferenceRouter.complete()`, the
+  only way to reach a model.
+- [app/inference/clients.py](../app/inference/clients.py): one small HTTP client for the
+  OpenAI-compatible `/chat/completions` format. Ollama speaks it at `localhost:11434/v1`.
+- [app/inference/prompts.py](../app/inference/prompts.py): loads a template from `prompts/`
+  and fills in the variables.
+- Local model: `gemma3:4b` through Ollama. Only the local route exists so far.
+
+**Decisions and why**
+- Agents hand the router a **prompt name and variables**, not a finished prompt. The
+  router then knows exactly which text came from the email and can check it.
+- Two checks before any call, in `_require_redacted`:
+  1. a `RedactionRecord` exists for the email;
+  2. none of the values the privacy agent replaced appears in the variables.
+  The second catches a caller that has a record but passes the original text anyway.
+- Variables have the type `RedactedText`. A plain `str` is rejected by mypy before the
+  code ever runs; the runtime checks catch what the type cannot.
+- A refusal raises `UnredactedInputError`, whose message never contains the text.
+- Every successful call writes an audit event with the model name and `left_local`.
+
+**Seen in practice**
+- First draft: 27.5 s, most of it loading the model into memory; 452 prompt tokens, 118
+  completion tokens. The log line `inference.completed` carries all of that.
+- [tests/unit/test_architecture.py](../tests/unit/test_architecture.py) reads the imports
+  of every file and fails if anything but the router and the startup wiring imports the client.
+- `test_a_workflow_that_skips_the_privacy_agent_never_reaches_the_model` builds the
+  pipeline wrongly on purpose: the model is never called and the audit log says `inference.refused`.
+
+**Try it**
+- Stop Ollama, fetch an email, and watch it go to "needs attention". Check the audit page.
+- In [app/agents/drafting.py](../app/agents/drafting.py), try passing a plain string as a
+  variable and run `uv run mypy app`. Undo.
+
+**Not met yet (Stage 4)**
+- The cloud route, the size/complexity rule, fallback after a local failure, `left_local=True`.
+- Check 2 only knows about values that were *detected*. It cannot notice PII the redactor missed.

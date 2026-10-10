@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
+    DDL,
     JSON,
     BigInteger,
     DateTime,
@@ -24,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -122,12 +124,17 @@ class Email(Base):
     # Carried by every event and log line about this email (NFR-2).
     correlation_id: Mapped[uuid.UUID] = mapped_column(unique=True, default=uuid.uuid4)
     citizen_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("citizens.id"), index=True)
-    original_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
+    # Set to null by the retention job, together with the email's PII mappings (GR-2).
+    original_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary)
     # Null until the privacy agent has run.
     subject_redacted: Mapped[str | None] = mapped_column(Text)
     body_redacted: Mapped[str | None] = mapped_column(Text)
     attachments: Mapped[list[str]] = mapped_column(JSON, default=list)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # When we started holding the data; the retention period counts from here.
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     # Null until the intake agent has run.
     topic: Mapped[Topic | None] = mapped_column(_enum(Topic))
     urgency: Mapped[Urgency | None] = mapped_column(_enum(Urgency))
@@ -135,6 +142,8 @@ class Email(Base):
         _enum(EmailStatus), default=EmailStatus.RECEIVED, index=True
     )
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
+    # Who may see it (GR-6): the assigned caseworker and this team.
+    team: Mapped[str | None] = mapped_column(String(100), index=True)
 
 
 class PiiMapping(Base):
@@ -222,3 +231,31 @@ class AuditEvent(Base):
     # Unique: two records can never claim the same predecessor, so the chain cannot fork.
     prev_hash: Mapped[str] = mapped_column(String(64), unique=True)
     hash: Mapped[str] = mapped_column(String(64), unique=True)
+
+
+# Append-only in the database itself (GR-8): PostgreSQL rejects any UPDATE, DELETE or
+# TRUNCATE on audit_events, whoever sends it. The same statements are in the migration;
+# these listeners make `create_all` (used by the tests) create them too.
+AUDIT_APPEND_ONLY_SQL = (
+    """
+    CREATE OR REPLACE FUNCTION audit_events_append_only() RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'audit_events is append-only';
+    END;
+    $$ LANGUAGE plpgsql
+    """,
+    """
+    CREATE TRIGGER audit_events_no_change BEFORE UPDATE OR DELETE ON audit_events
+    FOR EACH ROW EXECUTE FUNCTION audit_events_append_only()
+    """,
+    """
+    CREATE TRIGGER audit_events_no_truncate BEFORE TRUNCATE ON audit_events
+    FOR EACH STATEMENT EXECUTE FUNCTION audit_events_append_only()
+    """,
+)
+for _statement in AUDIT_APPEND_ONLY_SQL:
+    event.listen(
+        AuditEvent.__table__,
+        "after_create",
+        DDL(_statement).execute_if(dialect="postgresql"),  # type: ignore[no-untyped-call]
+    )

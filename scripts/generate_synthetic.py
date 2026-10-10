@@ -31,16 +31,31 @@ DEFAULT_FEED_PATH = Path("data/synthetic/emails.jsonl")
 REFERENCE_NOW = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
 
 # Template slots that are personal data, and the entity type they are labelled with.
-SLOT_ENTITY: dict[str, EntityType] = {
+_BASE_SLOTS: dict[str, EntityType] = {
     "name": EntityType.PERSON,
+    "first_name": EntityType.PERSON,
+    "name_lower": EntityType.PERSON,
     "street_address": EntityType.ADDRESS,
+    "plain_street_address": EntityType.ADDRESS,
     "postcode": EntityType.POSTCODE,
+    "postcode_lower": EntityType.POSTCODE,
     "bsn": EntityType.BSN,
+    "bsn_dotted": EntityType.BSN,
     "iban": EntityType.IBAN,
+    "iban_spaced": EntityType.IBAN,
     "phone": EntityType.PHONE,
+    "phone_mobile": EntityType.PHONE,
     "email": EntityType.EMAIL,
     "date_of_birth": EntityType.DATE_OF_BIRTH,
 }
+# Every slot also exists as `other_<slot>`: the same kind of value for a second person
+# (a partner, a neighbour), about whom the municipality knows nothing in advance.
+SLOT_ENTITY: dict[str, EntityType] = _BASE_SLOTS | {
+    f"other_{slot}": entity_type for slot, entity_type in _BASE_SLOTS.items()
+}
+
+# Street names without a typical ending such as -straat or -laan.
+PLAIN_STREETS = ("Kerkbuurt", "Oosteinde", "Achterom", "Nieuwe Haven", "Lange Voorhout", "Brink")
 
 
 @dataclass(frozen=True)
@@ -340,9 +355,31 @@ def _users(fake: Faker, rng: random.Random) -> list[SyntheticUser]:
     return users
 
 
-def _email(citizen: SyntheticCitizen, rng: random.Random) -> SyntheticEmail:
-    template = rng.choice(TEMPLATES)
-    values = {key: str(value) for key, value in asdict(citizen).items()}
+def _slot_values(citizen: SyntheticCitizen, rng: random.Random) -> dict[str, str]:
+    """A citizen's details, plus the same details written the way people actually write them."""
+    bsn, iban = citizen.bsn, citizen.iban
+    return {
+        **{key: str(value) for key, value in asdict(citizen).items()},
+        "first_name": citizen.name.split()[0],
+        "name_lower": citizen.name.lower(),
+        "plain_street_address": f"{rng.choice(PLAIN_STREETS)} {rng.randint(1, 180)}",
+        "postcode_lower": citizen.postcode.lower(),
+        "bsn_dotted": f"{bsn[:4]}.{bsn[4:6]}.{bsn[6:]}",
+        "iban_spaced": " ".join(iban[i : i + 4] for i in range(0, len(iban), 4)),
+        "phone_mobile": f"06-{rng.randint(10_000_000, 99_999_999)}",
+    }
+
+
+def render_email(
+    template: EmailTemplate,
+    citizen: SyntheticCitizen,
+    rng: random.Random,
+    other: SyntheticCitizen | None = None,
+) -> SyntheticEmail:
+    """Write one email from `citizen`. `other` fills the template's `other_*` slots."""
+    values = _slot_values(citizen, rng)
+    if other is not None:
+        values |= {f"other_{slot}": value for slot, value in _slot_values(other, rng).items()}
     subject, subject_spans = render(template.subject, values, "subject")
     body, body_spans = render(template.body, values, "body")
     return SyntheticEmail(
@@ -360,6 +397,13 @@ def _email(citizen: SyntheticCitizen, rng: random.Random) -> SyntheticEmail:
     )
 
 
+def generate_citizens(count: int, seed: int | None = None) -> list[SyntheticCitizen]:
+    rng = random.Random(seed)
+    fake = Faker("nl_NL")
+    fake.seed_instance(rng.getrandbits(64))
+    return [_citizen(fake, rng) for _ in range(count)]
+
+
 def generate(citizens: int, emails: int, seed: int | None = None) -> Dataset:
     rng = random.Random(seed)
     fake = Faker("nl_NL")
@@ -370,7 +414,9 @@ def generate(citizens: int, emails: int, seed: int | None = None) -> Dataset:
         citizens=people,
         cases=[case for person in people for case in _cases(person, rng)],
         users=_users(fake, rng),
-        emails=[_email(rng.choice(people), rng) for _ in range(emails)],
+        emails=[
+            render_email(rng.choice(TEMPLATES), rng.choice(people), rng) for _ in range(emails)
+        ],
     )
 
 

@@ -1,6 +1,6 @@
 # Encryption at rest, restoration and retention
 
-**Status:** Overview · **Stages:** 3 · **Requirements:** FR-12, GR-2, GR-3 · **Code:** `app/privacy/` (mapping store, restore)
+**Status:** Stage 2 notes added, questions open · **Stages:** 3 · **Requirements:** FR-12, GR-2, GR-3 · **Code:** `app/privacy/` (mapping store, restore)
 
 ## In one sentence
 The table that links each placeholder back to the real value is stored encrypted, opened
@@ -44,4 +44,28 @@ controls on the same risk.
 [pii-redaction](pii-redaction.md) · [rbac](rbac.md) · [config-and-secrets](config-and-secrets.md) · [human-in-the-loop-review](human-in-the-loop-review.md)
 
 ## Notes from the build
-_Empty — filled in during Stage 3._
+### Stage 2 — 2026-10-10 (encryption and restoration arrived early; retention has not)
+
+**What was built**
+- [app/privacy/crypto.py](../app/privacy/crypto.py): `Cipher`, a thin wrapper around
+  Fernet from the `cryptography` library. The key is `ENCRYPTION_KEY` in `.env`.
+- Three things are stored encrypted: the original email (`Email.original_encrypted`),
+  each mapped value (`PiiMapping.encrypted_value`) and the sent reply (`OutboxMessage.payload_encrypted`).
+- [app/privacy/restore.py](../app/privacy/restore.py): `restore()` swaps placeholders back.
+
+**Decisions and why**
+- Fernet is *authenticated* encryption: a changed ciphertext fails to decrypt instead of
+  giving garbage. There is a test that flips one bit.
+- `restore()` checks the role **inside the function**. A caller cannot get restored text
+  by forgetting a check, because the check is not the caller's job.
+- Restoration happens per request, at display time. Restored text is never written back
+  to the database; the stored draft keeps its placeholders.
+- A placeholder the model invented has no mapping and is shown as it is.
+
+**Seen in practice**
+- In the database a mapped value looks like `gAAAAABqynMC1gbb2XcC…`. The same value
+  encrypted twice gives two different ciphertexts.
+- The inference router also decrypts the mapping, to check that no mapped value is in a prompt.
+
+**Not met yet (Stage 3)**
+- The retention job that deletes old mappings; key rotation; what the UI shows once a mapping is gone.

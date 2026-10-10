@@ -1,6 +1,6 @@
 # Events and the event bus
 
-**Status:** Overview · **Stages:** 2, 5 · **Requirements:** FR-1, FR-2 · **Code:** `app/events/`
+**Status:** Stage 2 notes added, questions open · **Stages:** 2, 5 · **Requirements:** FR-1, FR-2 · **Code:** `app/events/`
 
 ## In one sentence
 Components announce what happened ("email received", "redaction completed") instead of
@@ -40,4 +40,36 @@ without redoing the ones before it.
 [agent-orchestration](agent-orchestration.md) · [observability](observability.md) · [async-python-fastapi](async-python-fastapi.md)
 
 ## Notes from the build
-_Empty — filled in during Stage 2._
+### Stage 2 — 2026-10-10
+
+**What was built**
+- [app/events/bus.py](../app/events/bus.py): the `EventBus` interface (`publish`,
+  `subscribe`, `start`, `stop`) and `InMemoryEventBus`, an `asyncio.Queue` with five
+  worker tasks that take events off the queue and call the subscribed handlers.
+- Events so far: `email.received`, `privacy.completed`, `drafting.completed`.
+
+**Decisions and why**
+- An `Event` has three fields: name, email ID, correlation ID. **No content.** Events get
+  logged and queued, and later stored in Redis; none of those may hold personal data.
+  A handler that needs the email reads it from the database.
+- Publish **after** commit ([app/orchestrator/ingestion.py](../app/orchestrator/ingestion.py)).
+  Published before, a fast subscriber could look for an email that is not saved yet.
+- The worker binds the event's correlation ID to the logging context, the same way the
+  HTTP middleware does for requests. Every log line of the pipeline carries the email's ID.
+- A handler that raises is logged and the worker carries on; one bad email must not stop the queue.
+
+**Seen in practice**
+- Clicking "Fetch next email" returns at once; the draft appears about 30 seconds later.
+  The page polls every 3 seconds for the new status. That gap *is* the decoupling.
+- `bus.join()` waits until the queue is empty, including events published by handlers.
+  The tests use it instead of sleeping.
+
+**Try it**
+- Fetch an email and stop the app (`Ctrl+C`) while it says "processing". Start it again:
+  the email stays in "processing" for ever. The event was only in memory.
+- `uv run pytest tests/unit/test_bus.py -v`
+
+**Not met yet (Stage 5)**
+- Redis Streams, consumer groups, acknowledgements, redelivery after a crash.
+- Idempotency is only partly there: the privacy agent skips an email that already has a
+  redaction record, the drafting agent would write a second draft.

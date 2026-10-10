@@ -4,8 +4,9 @@ from collections import Counter
 from sqlalchemy import select
 
 from app.agents.base import AgentResult, EmailContext
-from app.db.models import Email, PiiMapping, RedactionRecord
+from app.db.models import Citizen, Email, PiiMapping, RedactionRecord
 from app.privacy.crypto import Cipher
+from app.privacy.hints import known_values_for
 from app.privacy.original import OriginalEmail
 from app.privacy.redaction import Redactor
 
@@ -28,10 +29,17 @@ class PrivacyAgent:
             return AgentResult()
 
         email = await ctx.session.get_one(Email, ctx.email_id)
+        if email.original_encrypted is None:
+            raise RuntimeError("original was deleted by retention before it was redacted")
         original = OriginalEmail.decrypt(self._cipher, email.original_encrypted)
 
+        citizen = await ctx.session.get(Citizen, email.citizen_id) if email.citizen_id else None
+        known_values = known_values_for(citizen) if citizen else []
+
         # Presidio is synchronous and CPU-bound; a thread keeps the event loop free.
-        result = await asyncio.to_thread(self._redactor.redact, [original.subject, original.body])
+        result = await asyncio.to_thread(
+            self._redactor.redact, [original.subject, original.body], known_values
+        )
 
         email.subject_redacted, email.body_redacted = result.texts
         ctx.session.add_all(

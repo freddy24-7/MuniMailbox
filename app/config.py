@@ -28,6 +28,10 @@ class Settings(BaseSettings):
 
     spacy_model: str
     redaction_score_threshold: float = 0.4
+    # The build fails if recall on the PII test set drops below this (GR-4).
+    pii_recall_threshold: float = 0.95
+    # Originals and PII mappings are deleted this long after an email arrived (GR-2).
+    pii_retention_days: int = 30
 
     # Local model behind an OpenAI-compatible API (Ollama or vLLM).
     local_llm_base_url: str

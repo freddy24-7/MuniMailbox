@@ -13,6 +13,7 @@ from app.privacy.crypto import Cipher
 from app.privacy.restore import restore
 from app.review.service import approve_draft
 from app.services import Services
+from tests.conftest import TEAM
 from tests.helpers import BSN, SENDER, incoming_email, logged_in
 
 Db = async_sessionmaker[AsyncSession]
@@ -22,7 +23,9 @@ Users = dict[Role, User]
 async def _email_with_draft(app: FastAPI, incoming: IncomingEmail | None = None) -> Draft:
     services: Services = app.state.services
     async with services.session_factory() as session:
-        await ingest_email(session, services.bus, services.cipher, incoming or incoming_email())
+        await ingest_email(
+            session, services.bus, services.cipher, incoming or incoming_email(), team=TEAM
+        )
         await services.bus.join()
         return (await session.scalars(select(Draft))).one()
 
@@ -132,7 +135,7 @@ async def test_auditor_sees_the_process_but_never_the_person(
                 session,
                 cipher,
                 user=users[Role.AUDITOR],
-                email_id=draft.email_id,
+                email=await session.get_one(Email, draft.email_id),
                 texts=[draft.text_redacted],
             )
 

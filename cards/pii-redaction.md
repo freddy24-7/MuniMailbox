@@ -1,6 +1,6 @@
 # PII detection and redaction
 
-**Status:** Overview · **Stages:** 2, 3 · **Requirements:** FR-5, GR-1, GR-4 · **Code:** `app/privacy/`, `app/agents/privacy.py`
+**Status:** Stage 2 notes added, questions open · **Stages:** 2, 3 · **Requirements:** FR-5, GR-1, GR-4 · **Code:** `app/privacy/`, `app/agents/privacy.py`
 
 ## In one sentence
 Before any model sees an email, every piece of personal data is found and swapped for a
@@ -43,4 +43,49 @@ cloud model. Redaction is the first pipeline step and the precondition for every
 [encryption-and-retention](encryption-and-retention.md) · [inference-routing](inference-routing.md) · [synthetic-data](synthetic-data.md) · [testing-strategy](testing-strategy.md)
 
 ## Notes from the build
-_Empty — filled in during Stage 2._
+### Stage 2 — 2026-10-10
+
+**What was built**
+- [app/privacy/engine.py](../app/privacy/engine.py): Presidio with the Dutch spaCy model
+  `nl_core_news_lg` for names and places, the built-in email, IBAN and phone recognizers,
+  and three of our own. `ENTITY_MAP` decides which detections are redacted and as what.
+- [app/privacy/recognizers.py](../app/privacy/recognizers.py): BSN (nine digits **plus**
+  the 11-check), postcode, numeric date.
+- [app/privacy/redaction.py](../app/privacy/redaction.py): `Redactor.redact()` turns
+  detections into numbered placeholders and returns the mapping.
+- [app/agents/privacy.py](../app/agents/privacy.py): stores the redacted text, the
+  encrypted mapping and a `RedactionRecord` (counts per type, never values).
+
+**Decisions and why**
+- Subject and body are redacted in one call with one shared mapping, so `[PERSON_1]` is
+  the same person in both.
+- **Propagation:** a value detected once is replaced everywhere it occurs. NER depends on
+  context and often finds a name in the signature but misses it in the first line.
+- Overlapping detections: the most confident wins, then the longest.
+- Relative dates ("volgende maand") and organisations are not redacted: they identify
+  nobody and the draft needs them.
+- Presidio runs in a thread (`asyncio.to_thread`) because it is synchronous. It takes
+  about 17 ms per email; loading the model takes about a second, once, at startup.
+
+**Seen in practice — baseline on 150 synthetic emails**
+
+| Type | Fully redacted | How it is detected |
+| --- | --- | --- |
+| BSN, IBAN, email, postcode, date of birth | all | pattern, some with checksum |
+| Names | 121 of 168 (25 more partially) | NER |
+| Phone numbers | 47 of 64 | built-in pattern, not Dutch-specific |
+| Street addresses | 5 of 94 | NER, which does not know street names |
+
+- In the first live run "Pleunsteeg 8" and the phone number reached the local model.
+  Pattern-based types are solved; NER-based types are where recall is lost.
+- Cities are redacted as `[ADDRESS_n]` even though the generator does not label them.
+- Double-barrelled names are typically caught only in part ("Kayleigh" out of a longer name).
+
+**Try it**
+- In the app, open an email and expand "What the model saw". Find something that should
+  have been a placeholder and is not.
+- `uv run pytest tests/unit/test_redaction.py -v` and read the test names.
+
+**Not met yet (Stage 3)**
+- Street-address and Dutch phone recognizers; the labelled test set and the recall gate in CI.
+- Using what the municipality already knows about the sender (name, address) as extra detection.

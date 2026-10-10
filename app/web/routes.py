@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import writer as audit
 from app.auth.dependencies import current_user, require
-from app.auth.permissions import Permission, has_permission
+from app.auth.permissions import Permission, PermissionDeniedError, has_permission
+from app.auth.scope import can_access_email, visible_emails
 from app.auth.session import SESSION_COOKIE
 from app.db.models import AuditEvent, Draft, Email, OutboxMessage, User
 from app.db.session import get_session
@@ -82,7 +83,11 @@ async def logout(_: Annotated[User, Depends(current_user)]) -> RedirectResponse:
 
 
 async def _queue_context(session: AsyncSession, user: User) -> dict[str, object]:
-    emails = (await session.scalars(select(Email).order_by(Email.received_at.desc()))).all()
+    emails = (
+        await session.scalars(
+            select(Email).where(visible_emails(user)).order_by(Email.received_at.desc())
+        )
+    ).all()
     return {"emails": emails, "user": user}
 
 
@@ -105,10 +110,13 @@ async def queue_rows(
 
 @router.post("/intake/next")
 async def intake_next(
-    request: Request, session: Db, _: Annotated[User, Depends(require(Permission.INTAKE_PULL))]
+    request: Request, session: Db, user: Annotated[User, Depends(require(Permission.INTAKE_PULL))]
 ) -> RedirectResponse:
     services = _services(request)
-    await ingest_next_from_feed(session, services.bus, services.cipher, services.settings.feed_path)
+    # Until the intake agent routes by topic, an email belongs to the team that fetched it.
+    await ingest_next_from_feed(
+        session, services.bus, services.cipher, services.settings.feed_path, team=user.team
+    )
     return RedirectResponse("/queue", status_code=303)
 
 
@@ -124,7 +132,8 @@ async def email_detail(
 ) -> HTMLResponse:
     cipher = _services(request).cipher
     email = await session.get(Email, email_id)
-    if email is None:
+    # Another team's email looks exactly like one that does not exist.
+    if email is None or not can_access_email(user, email):
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
     draft = await session.scalar(
@@ -133,7 +142,7 @@ async def email_detail(
     draft_restored = None
     if draft is not None:
         (draft_restored,) = await restore(
-            session, cipher, user=user, email_id=email.id, texts=[draft.text_redacted]
+            session, cipher, user=user, email=email, texts=[draft.text_redacted]
         )
     sent = await session.scalar(select(OutboxMessage).where(OutboxMessage.email_id == email.id))
 
@@ -169,6 +178,8 @@ async def approve(
         outbox_message = await approve_draft(
             session, _services(request).cipher, user=user, draft_id=draft_id
         )
+    except PermissionDeniedError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from error
     except NotApprovableError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(error)) from error
     await session.commit()

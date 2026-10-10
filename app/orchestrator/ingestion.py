@@ -29,7 +29,12 @@ class IncomingEmail(BaseModel):
 
 
 async def ingest_email(
-    session: AsyncSession, bus: EventBus, cipher: Cipher, incoming: IncomingEmail
+    session: AsyncSession,
+    bus: EventBus,
+    cipher: Cipher,
+    incoming: IncomingEmail,
+    *,
+    team: str | None = None,
 ) -> Email:
     citizen_id = await session.scalar(
         select(Citizen.id).where(Citizen.email == incoming.sender).limit(1)
@@ -43,6 +48,7 @@ async def ingest_email(
         ),
         attachments=incoming.attachments,
         received_at=incoming.received_at,
+        team=team,
     )
     session.add(email)
     await audit.record(session, actor="system:intake", action=EMAIL_RECEIVED, email_id=email.id)
@@ -60,12 +66,17 @@ def _read_feed(path: Path) -> list[IncomingEmail]:
 
 
 async def ingest_next_from_feed(
-    session: AsyncSession, bus: EventBus, cipher: Cipher, feed_path: Path
+    session: AsyncSession,
+    bus: EventBus,
+    cipher: Cipher,
+    feed_path: Path,
+    *,
+    team: str | None = None,
 ) -> Email | None:
     """Simulated mailbox: take the first feed email that has not been ingested yet."""
     feed = await asyncio.to_thread(_read_feed, feed_path)
     known = set(await session.scalars(select(Email.id)))
     for incoming in feed:
         if incoming.id not in known:
-            return await ingest_email(session, bus, cipher, incoming)
+            return await ingest_email(session, bus, cipher, incoming, team=team)
     return None

@@ -1,5 +1,5 @@
 from app.privacy.entities import EntityType
-from app.privacy.redaction import Redactor
+from app.privacy.redaction import KnownValue, Redactor
 from tests.helpers import BSN, IBAN, POSTCODE, SENDER
 
 
@@ -50,3 +50,17 @@ def test_text_without_personal_data_is_unchanged(redactor: Redactor) -> None:
     result = redactor.redact([text])
     assert result.texts == [text]
     assert result.mapping == []
+
+
+def test_known_values_are_redacted_however_they_are_written(redactor: Redactor) -> None:
+    """The sender's own record: certain, so no recognizer has to agree."""
+    known = [KnownValue(EntityType.PERSON, "Xyq Zzyzx"), KnownValue(EntityType.PERSON, "Zzyzx")]
+    result = redactor.redact(["ik ben xyq zzyzx. Vraag naar mevrouw Zzyzx."], known)
+    assert result.texts == ["ik ben [PERSON_1]. Vraag naar mevrouw [PERSON_2]."]
+
+
+def test_overlapping_detections_are_merged_not_chosen_between(redactor: Redactor) -> None:
+    """Nothing a recognizer flagged stays visible because another recognizer won."""
+    known = [KnownValue(EntityType.ADDRESS, "Kerkstraat")]
+    (redacted,) = redactor.redact(["Ik woon op Kerkstraat 12 in het centrum."], known).texts
+    assert redacted == "Ik woon op [ADDRESS_1] in het centrum."

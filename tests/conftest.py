@@ -36,6 +36,8 @@ from app.privacy.engine import build_analyzer  # noqa: E402
 from app.privacy.redaction import Redactor  # noqa: E402
 from tests.helpers import FakeLLM  # noqa: E402
 
+TEAM = "Team A"
+
 
 @pytest.fixture
 def database_url(tmp_path: Path) -> str:
@@ -107,11 +109,21 @@ async def app(
 @pytest.fixture
 async def users(session_factory: async_sessionmaker[AsyncSession]) -> dict[Role, User]:
     people = {
-        Role.CASEWORKER: User(name="Test Caseworker", role=Role.CASEWORKER, team="Team A"),
-        Role.TEAM_LEAD: User(name="Test Team Lead", role=Role.TEAM_LEAD, team="Team A"),
+        Role.CASEWORKER: User(name="Test Caseworker", role=Role.CASEWORKER, team=TEAM),
+        Role.TEAM_LEAD: User(name="Test Team Lead", role=Role.TEAM_LEAD, team=TEAM),
         Role.AUDITOR: User(name="Test Auditor", role=Role.AUDITOR, team=None),
     }
     async with session_factory() as session:
         session.add_all(people.values())
         await session.commit()
     return people
+
+
+@pytest.fixture
+async def outsider(session_factory: async_sessionmaker[AsyncSession]) -> User:
+    """A caseworker with every permission, but in another team."""
+    user = User(name="Test Outsider", role=Role.CASEWORKER, team="Team B")
+    async with session_factory() as session:
+        session.add(user)
+        await session.commit()
+    return user

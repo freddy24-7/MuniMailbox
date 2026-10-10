@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import writer as audit
 from app.auth.permissions import Permission, require_permission
+from app.auth.scope import require_email_access
 from app.db.models import (
     Draft,
     Email,
@@ -31,6 +32,9 @@ async def approve_draft(
 
     Review, outbox message, status change and audit events are one transaction; the
     caller commits. This is the only place an OutboxMessage is created.
+
+    Raises PermissionDeniedError if the user's role may not approve or the email is
+    outside their team, NotApprovableError if the draft cannot be approved (any more).
     """
     require_permission(user.role, Permission.DRAFT_APPROVE)
 
@@ -41,17 +45,18 @@ async def approve_draft(
     email = (
         await session.scalars(select(Email).where(Email.id == draft.email_id).with_for_update())
     ).one()
+    require_email_access(user, email)
     if email.status is not EmailStatus.DRAFT_READY:
         raise NotApprovableError(f"email is {email.status.value}, not draft_ready")
+    original = read_original(cipher, user=user, email=email)
+    if original is None:
+        raise NotApprovableError("personal data was deleted after the retention period")
 
     review = Review(draft_id=draft.id, user_id=user.id, action=ReviewAction.APPROVE)
     session.add(review)
     await session.flush()
 
-    original = read_original(cipher, user=user, email=email)
-    (body,) = await restore(
-        session, cipher, user=user, email_id=email.id, texts=[draft.text_redacted]
-    )
+    (body,) = await restore(session, cipher, user=user, email=email, texts=[draft.text_redacted])
     outbox_message = OutboxMessage(
         email_id=email.id,
         review_id=review.id,

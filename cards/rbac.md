@@ -1,6 +1,6 @@
 # Role-based access control (RBAC)
 
-**Status:** Overview · **Stages:** 3, 5 · **Requirements:** GR-5, GR-6 · **Code:** `app/auth/`, `app/api/`
+**Status:** Stage 2 notes added, questions open · **Stages:** 3, 5 · **Requirements:** GR-5, GR-6 · **Code:** `app/auth/`, `app/api/`
 
 ## In one sentence
 What a user may do and see is decided by their role, the mapping from roles to
@@ -43,4 +43,30 @@ view another team's emails.
 [encryption-and-retention](encryption-and-retention.md) · [audit-trail-hash-chain](audit-trail-hash-chain.md) · [human-in-the-loop-review](human-in-the-loop-review.md) · [async-python-fastapi](async-python-fastapi.md)
 
 ## Notes from the build
-_Empty — filled in during Stage 3._
+### Stage 2 — 2026-10-10 (roles and permissions arrived early; team scoping has not)
+
+**What was built**
+- [app/auth/permissions.py](../app/auth/permissions.py): five permissions and the one
+  table that maps the three roles to them.
+- [app/auth/dependencies.py](../app/auth/dependencies.py): `current_user` reads the login
+  cookie; `require(Permission.X)` is what an endpoint declares.
+- [app/auth/session.py](../app/auth/session.py): the login cookie is the user's ID,
+  encrypted and signed with `SESSION_SECRET`, valid for eight hours.
+
+**Decisions and why**
+- Code asks for a permission (`draft:approve`), never for a role name. Changing who may do
+  what is an edit to one table.
+- The same permission is checked at the endpoint and again in the service behind it
+  (`approve_draft`, `restore`).
+- A cookie that was altered, forged or has expired decodes to "nobody".
+- [tests/unit/test_architecture.py](../tests/unit/test_architecture.py) lists the public
+  paths (health and login). Any other endpoint without a logged-in user fails the test,
+  so a new endpoint cannot forget its check unnoticed.
+
+**Seen in practice**
+- Auditor: 403 on the queue and on an email, 200 on the audit page.
+- Team lead: can read, gets 403 on approve.
+
+**Not met yet (Stage 3)**
+- Object-level checks: today every caseworker and team lead sees **every** email.
+  "Is this email assigned to me or my team?" is not asked anywhere yet (GR-6).

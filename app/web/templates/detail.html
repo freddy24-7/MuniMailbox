@@ -1,15 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <p><a href="/queue">← Queue</a></p>
-<h1>{{ original.subject }} <span class="badge {{ email.status.value }}">{{ email.status.value.replace("_", " ") }}</span></h1>
+<h1>{{ original.subject if original else email.subject_redacted }} <span class="badge {{ email.status.value }}">{{ email.status.value.replace("_", " ") }}</span></h1>
 
 {% if sent %}<div class="notice">Approved and written to the outbox for {{ sent.to }}.</div>{% endif %}
 {% if email.status.value == "needs_attention" %}<div class="notice bad">Automatic processing failed. This email needs manual handling.</div>{% endif %}
 
 <div class="cols">
   <section class="panel">
-    <h2>Email from {{ original.sender }}</h2>
-    <pre class="text">{{ original.body }}</pre>
+    {% if original %}
+      <h2>Email from {{ original.sender }}</h2>
+      <pre class="text">{{ original.body }}</pre>
+    {% else %}
+      <h2>Email</h2>
+      <p class="muted">The original and its personal data were deleted after the retention period. Only the redacted text remains.</p>
+      <pre class="text">{{ email.body_redacted }}</pre>
+    {% endif %}
     {% if email.attachments %}<p class="muted">Attachments: {{ email.attachments | join(", ") }}</p>{% endif %}
     <details>
       <summary>What the model saw</summary>
@@ -26,7 +32,7 @@
         <summary>As stored (placeholders)</summary>
         <pre class="text">{{ draft.text_redacted }}</pre>
       </details>
-      {% if can_approve and email.status.value == "draft_ready" %}
+      {% if can_approve and original and email.status.value == "draft_ready" %}
         <p><form method="post" action="/drafts/{{ draft.id }}/approve"><button>Approve and send</button></form></p>
       {% elif email.status.value == "draft_ready" %}
         <p class="muted">Only a caseworker can approve a draft.</p>

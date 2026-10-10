@@ -1,5 +1,6 @@
 import pytest
 from sqlalchemy import delete, text, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import writer as audit
@@ -16,6 +17,19 @@ async def _three_events(session: AsyncSession) -> list[AuditEvent]:
     return events
 
 
+async def _tamper(session: AsyncSession, statement: str, **parameters: object) -> None:
+    """Change the table the way an attacker with full database rights would: on
+    PostgreSQL that means switching the append-only trigger off first."""
+    is_postgres = session.get_bind().dialect.name == "postgresql"
+    if is_postgres:
+        await session.execute(text("ALTER TABLE audit_events DISABLE TRIGGER USER"))
+    await session.execute(text(statement), parameters)
+    if is_postgres:
+        await session.execute(text("ALTER TABLE audit_events ENABLE TRIGGER USER"))
+    await session.commit()
+    session.expire_all()
+
+
 async def test_each_record_points_at_the_previous_one(session: AsyncSession) -> None:
     first, second, third = await _three_events(session)
     assert first.prev_hash == GENESIS_HASH
@@ -27,12 +41,9 @@ async def test_each_record_points_at_the_previous_one(session: AsyncSession) -> 
 async def test_changing_a_record_behind_the_orm_is_detected(session: AsyncSession) -> None:
     """Acceptance criterion: tampering with an audit record is detected."""
     _, second, _ = await _three_events(session)
-    await session.execute(
-        text("UPDATE audit_events SET action = 'nothing.happened' WHERE id = :id"),
-        {"id": second.id},
+    await _tamper(
+        session, "UPDATE audit_events SET action = 'nothing.happened' WHERE id = :id", id=second.id
     )
-    await session.commit()
-    session.expire_all()
 
     status = await verify_chain(session)
     assert not status.ok
@@ -41,9 +52,7 @@ async def test_changing_a_record_behind_the_orm_is_detected(session: AsyncSessio
 
 async def test_removing_a_record_behind_the_orm_is_detected(session: AsyncSession) -> None:
     _, second, third = await _three_events(session)
-    await session.execute(text("DELETE FROM audit_events WHERE id = :id"), {"id": second.id})
-    await session.commit()
-    session.expire_all()
+    await _tamper(session, "DELETE FROM audit_events WHERE id = :id", id=second.id)
 
     status = await verify_chain(session)
     assert not status.ok
@@ -69,3 +78,24 @@ async def test_the_orm_refuses_to_update_or_delete(session: AsyncSession) -> Non
         await session.execute(delete(AuditEvent))
 
     assert (await verify_chain(session)).ok
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE audit_events SET action = 'nothing.happened'",
+        "DELETE FROM audit_events",
+        "TRUNCATE audit_events",
+    ],
+)
+async def test_the_database_itself_refuses_changes(session: AsyncSession, statement: str) -> None:
+    """GR-8 below the application: raw SQL that never passes through the ORM."""
+    if session.get_bind().dialect.name != "postgresql":
+        pytest.skip("the append-only trigger exists on PostgreSQL only")
+    await _three_events(session)
+
+    with pytest.raises(DBAPIError, match="append-only"):
+        await session.execute(text(statement))
+    await session.rollback()
+
+    assert await verify_chain(session) == audit.ChainStatus(ok=True, checked=3)
