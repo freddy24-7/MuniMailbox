@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Audit log</h1>
+{% if chain.ok %}
+  <div class="notice">Hash chain intact: {{ chain.checked }} events verified.</div>
+{% else %}
+  <div class="notice bad">Hash chain broken at event {{ chain.first_broken_id }}. A record was changed or removed.</div>
+{% endif %}
+<table>
+  <tr><th>#</th><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Email</th><th>Model</th><th>Left local</th><th>Hash</th></tr>
+  {% for event in events %}
+  <tr>
+    <td>{{ event.id }}</td>
+    <td>{{ event.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+    <td>{{ event.actor }}</td>
+    <td>{{ event.action }}</td>
+    <td>{{ event.email_id or "—" }}</td>
+    <td>{{ event.model or "—" }}</td>
+    <td>{{ "yes" if event.left_local else "no" }}</td>
+    <td><code>{{ event.hash[:12] }}…</code></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

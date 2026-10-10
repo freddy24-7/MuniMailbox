@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/queue">← Queue</a></p>
+<h1>{{ original.subject }} <span class="badge {{ email.status.value }}">{{ email.status.value.replace("_", " ") }}</span></h1>
+
+{% if sent %}<div class="notice">Approved and written to the outbox for {{ sent.to }}.</div>{% endif %}
+{% if email.status.value == "needs_attention" %}<div class="notice bad">Automatic processing failed. This email needs manual handling.</div>{% endif %}
+
+<div class="cols">
+  <section class="panel">
+    <h2>Email from {{ original.sender }}</h2>
+    <pre class="text">{{ original.body }}</pre>
+    {% if email.attachments %}<p class="muted">Attachments: {{ email.attachments | join(", ") }}</p>{% endif %}
+    <details>
+      <summary>What the model saw</summary>
+      <p class="muted">Subject: {{ email.subject_redacted }}</p>
+      <pre class="text">{{ email.body_redacted }}</pre>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2>Draft reply{% if draft %} · {{ draft.model_used }}{% endif %}</h2>
+    {% if draft %}
+      <pre class="text">{{ draft_restored }}</pre>
+      <details>
+        <summary>As stored (placeholders)</summary>
+        <pre class="text">{{ draft.text_redacted }}</pre>
+      </details>
+      {% if can_approve and email.status.value == "draft_ready" %}
+        <p><form method="post" action="/drafts/{{ draft.id }}/approve"><button>Approve and send</button></form></p>
+      {% elif email.status.value == "draft_ready" %}
+        <p class="muted">Only a caseworker can approve a draft.</p>
+      {% endif %}
+    {% else %}
+      <p class="muted">No draft yet.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

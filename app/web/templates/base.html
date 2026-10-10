@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Municipal Inbox Assistant{% endblock %}</title>
+  <script src="/static/htmx.min.js" defer></script>
+  <style>
+    :root { --ink: #1c2530; --muted: #5d6b7a; --line: #d9dfe6; --bg: #f5f7f9; --accent: #154273; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+    header { background: var(--accent); color: #fff; padding: 12px 24px; display: flex; gap: 16px; align-items: center; }
+    header a { color: #fff; }
+    header .who { margin-left: auto; font-size: 14px; }
+    main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 22px; margin: 0 0 16px; }
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 13px; color: var(--muted); font-weight: 600; }
+    .panel { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+    .text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: inherit; }
+    .muted { color: var(--muted); }
+    .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #e6ebf0; }
+    .badge.draft_ready { background: #fff1c2; } .badge.approved { background: #cdeed3; }
+    .badge.needs_attention, .badge.rejected { background: #f8d2d2; } .badge.processing { background: #d5e6fb; }
+    button { font: inherit; padding: 7px 14px; border: 1px solid var(--accent); border-radius: 5px; background: var(--accent); color: #fff; cursor: pointer; }
+    button.plain { background: #fff; color: var(--accent); }
+    form { display: inline; }
+    details { margin-top: 12px; }
+    .notice { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; background: #cdeed3; }
+    .notice.bad { background: #f8d2d2; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Municipal Inbox Assistant</strong>
+    {% if user %}
+      <span class="who">{{ user.name }} · {{ user.role.value }}{% if user.team %} · {{ user.team }}{% endif %}</span>
+      <form method="post" action="/logout"><button class="plain">Log out</button></form>
+    {% endif %}
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import (
 
 
 def create_engine(database_url: str) -> AsyncEngine:
-    return create_async_engine(database_url, pool_pre_ping=True)
+    # hide_parameters: SQL errors are logged, and their parameters can be personal data.
+    return create_async_engine(database_url, pool_pre_ping=True, hide_parameters=True)
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
@@ -19,6 +20,6 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     """FastAPI dependency: one session per request, never shared between requests."""
-    session_factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+    session_factory: async_sessionmaker[AsyncSession] = request.app.state.services.session_factory
     async with session_factory() as session:
         yield session

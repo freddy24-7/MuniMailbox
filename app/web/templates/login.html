@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Demo login</h1>
+<p class="muted">Pick a user. This is a demo login with synthetic users; there are no passwords.</p>
+<table>
+  <tr><th>Name</th><th>Role</th><th>Team</th><th></th></tr>
+  {% for candidate in users %}
+  <tr>
+    <td>{{ candidate.name }}</td>
+    <td>{{ candidate.role.value }}</td>
+    <td>{{ candidate.team or "—" }}</td>
+    <td><form method="post" action="/login/{{ candidate.id }}"><button>Log in</button></form></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4">No users yet. Run <code>scripts/generate_synthetic.py</code> first.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

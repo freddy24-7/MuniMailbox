@@ -1,0 +1,10 @@
+{% for email in emails %}
+<tr>
+  <td>{{ email.received_at.strftime("%d-%m-%Y %H:%M") }}</td>
+  <td>{{ email.subject_redacted if email.subject_redacted is not none else "(not redacted yet)" }}</td>
+  <td><span class="badge {{ email.status.value }}">{{ email.status.value.replace("_", " ") }}</span></td>
+  <td><a href="/emails/{{ email.id }}">Open</a></td>
+</tr>
+{% else %}
+<tr><td colspan="4" class="muted">No emails yet.</td></tr>
+{% endfor %}

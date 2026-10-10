@@ -4,6 +4,7 @@ Where personal data lives, and in what form:
 - `Citizen`: clear text. It stands in for the municipality's own case-management system.
 - `Email.original_encrypted`: the original sender, subject and body, encrypted.
 - `PiiMapping.encrypted_value`: the value behind each placeholder, encrypted.
+- `OutboxMessage.payload_encrypted`: the approved reply with values restored, encrypted.
 - Every column ending in `_redacted`: placeholders only. This is what models and auditors see.
 """
 
@@ -149,6 +150,18 @@ class PiiMapping(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class RedactionRecord(Base):
+    """Proof that the privacy agent processed an email. The inference router refuses
+    any model call for an email without one (FR-14). Contains counts, never values."""
+
+    __tablename__ = "redaction_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("emails.id"), unique=True)
+    entity_counts: Mapped[dict[str, int]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Draft(Base):
     __tablename__ = "drafts"
 
@@ -174,6 +187,23 @@ class Review(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class OutboxMessage(Base):
+    """A reply that has been "sent" (FR-21, simulated).
+
+    `review_id` is required and unique: the schema itself does not allow an outbox row
+    without the review that approved it.
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("emails.id"), index=True)
+    review_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("reviews.id"), unique=True)
+    # Recipient, subject and body with personal data restored, encrypted.
+    payload_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AuditEvent(Base):
     """Append-only and hash-chained (GR-7, GR-8). Never updated or deleted."""
 
@@ -189,5 +219,6 @@ class AuditEvent(Base):
     model: Mapped[str | None] = mapped_column(String(200))
     left_local: Mapped[bool] = mapped_column(default=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    prev_hash: Mapped[str] = mapped_column(String(64))
+    # Unique: two records can never claim the same predecessor, so the chain cannot fork.
+    prev_hash: Mapped[str] = mapped_column(String(64), unique=True)
     hash: Mapped[str] = mapped_column(String(64), unique=True)

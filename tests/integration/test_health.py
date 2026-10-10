@@ -1,14 +1,13 @@
-from fastapi.testclient import TestClient
+from fastapi import FastAPI
 
-from app.config import Settings
-from app.main import create_app
 from app.observability.correlation import CORRELATION_HEADER
+from tests.helpers import logged_in
 
 
-def test_liveness_and_readiness(settings: Settings) -> None:
-    with TestClient(create_app(settings)) as client:
-        assert client.get("/healthz").json() == {"status": "ok"}
+async def test_liveness_and_readiness(app: FastAPI) -> None:
+    async with logged_in(app, None) as client:
+        assert (await client.get("/healthz")).json() == {"status": "ok"}
 
-        ready = client.get("/readyz")
+        ready = await client.get("/readyz")
         assert ready.status_code == 200
         assert CORRELATION_HEADER in ready.headers
