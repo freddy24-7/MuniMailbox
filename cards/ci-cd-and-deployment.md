@@ -1,6 +1,6 @@
 # CI/CD, Docker Compose and systemd
 
-**Status:** Overview · **Stages:** 1 (CI), 6 · **Requirements:** GR-11, NFR portability · **Code:** `.github/workflows/`, `deploy/`
+**Status:** Stage 1 notes added, questions open · **Stages:** 1 (CI), 6 · **Requirements:** GR-11, NFR portability · **Code:** `.github/workflows/`, `deploy/`
 
 ## In one sentence
 Every push is checked automatically, and a push to main that passes is built and rolled
@@ -44,4 +44,35 @@ nine-part stack usable by one developer.
 [testing-strategy](testing-strategy.md) · [config-and-secrets](config-and-secrets.md) · [observability](observability.md)
 
 ## Notes from the build
-_Empty — filled in during Stages 1 and 6._
+### Stage 1 — 2026-10-10 (CI and local Compose only)
+
+**What was built**
+- [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push to `main` and
+  every pull request: install → ruff (lint and format check) → mypy → migrations → tests.
+  The first run, on commit `e79a7cc`, passed.
+- [deploy/docker-compose.yml](../deploy/docker-compose.yml) with one service so far,
+  PostgreSQL. The root [compose.yaml](../compose.yaml) only includes it, so
+  `docker compose up -d` works from the repository root.
+
+**Decisions and why**
+- CI starts its own PostgreSQL as a *service container*: created for the job, thrown away
+  after. Tests therefore run against the same database engine as production.
+- `uv sync --locked` fails if `uv.lock` does not match `pyproject.toml`, so CI installs
+  exactly the versions that were tested locally.
+- Order is cheapest first: a formatting error fails in seconds, before the database is used.
+- The migration step runs `alembic upgrade head` on an empty database (proves a fresh
+  install works) and `alembic check` (proves no migration is missing).
+- Locally the database port is published as `127.0.0.1:5432`, not `5432`. The first form
+  is reachable only from this machine (GR-11).
+- The Compose file refuses to start without a password (`${POSTGRES_PASSWORD:?...}`)
+  rather than falling back to a default.
+
+**Try it**
+- Open the Actions tab on GitHub and read the log of each step of the first run.
+- Push a branch with a deliberately mis-formatted file and watch which step fails.
+- `docker compose ps`, `docker compose logs postgres`, `docker volume ls`.
+- `docker compose down` versus `docker compose down -v` — check what happens to the data.
+
+**Not met yet**
+- No deploy job, no VPS, no systemd, no HTTPS, no image for the app itself (Stage 6).
+- The PII recall gate and the Playwright job (Stages 3 and 6).

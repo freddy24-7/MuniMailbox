@@ -1,6 +1,6 @@
 # Synthetic data
 
-**Status:** Overview · **Stages:** 1, 3 · **Requirements:** GR-9, GR-4 · **Code:** `scripts/generate_synthetic.py`, `tests/pii_testset/`
+**Status:** Stage 1 notes added, questions open · **Stages:** 1, 3 · **Requirements:** GR-9, GR-4 · **Code:** `scripts/generate_synthetic.py`, `tests/pii_testset/`
 
 ## In one sentence
 Every citizen, case and email in the project is generated, never real, yet realistic
@@ -37,4 +37,42 @@ email, redaction recall can be measured.
 [pii-redaction](pii-redaction.md) · [testing-strategy](testing-strategy.md) · [data-model-and-migrations](data-model-and-migrations.md)
 
 ## Notes from the build
-_Empty — filled in during Stage 1._
+### Stage 1 — 2026-10-10
+
+**What was built**
+- [scripts/generate_synthetic.py](../scripts/generate_synthetic.py). `generate()` is pure
+  (no database, no files), which is what makes it testable; `persist()` and `write_feed()`
+  do the I/O.
+- Citizens, cases and seven demo users go to the database. Emails go to
+  `data/synthetic/emails.jsonl`, one JSON object per line, each with its ground truth:
+  topic, urgency, sensitive flag and a list of PII spans.
+- `render()` fills a template slot by slot and records `start`, `end`, entity type and
+  value for every personal slot. The labels are exact because they are produced by the
+  same step that inserts the value.
+
+**Decisions and why**
+- Emails are a feed file, not database rows: the stored original must be encrypted, and
+  the intake step that does that arrives in Stage 2.
+- `fake.unique.ssn()` gives BSNs that pass the 11-check; a test verifies this with our own
+  validator in [app/privacy/checksums.py](../app/privacy/checksums.py).
+- `safe_email()` only uses the reserved `example.com/.org/.net` domains, so a generated
+  address can never be someone's real mailbox.
+- One `random.Random(seed)` drives everything, and "now" is the fixed `REFERENCE_NOW`, so
+  `--seed 1` gives the same dataset on any day.
+
+**Seen in practice**
+- Faker's Dutch formats are already messy in a useful way: postcodes come out as `8928LP`
+  (no space) and phones as `+31093 638962`. The recognizers in Stage 3 must cope.
+- Cities are inserted but **not labelled** as PII; only street address and postcode are.
+- Limitation: 12 templates produce all 500 emails, so the texts are repetitive. Recall and
+  classification measured on them will look better than they would on real mail.
+
+**Try it**
+- `head -1 data/synthetic/emails.jsonl | python3 -m json.tool`
+- Run twice with `--seed 1 --out /tmp/a.jsonl` and `/tmp/b.jsonl`, then `diff` the two files.
+  (Use a fresh database or expect a unique-BSN error on the second run — why?)
+
+**Not met yet**
+- Hard cases on purpose: PII in the subject, two people in one email, a BSN written with
+  dots, a name that is also an ordinary word (Stage 3, with the PII test set).
+- LLM-written email texts for variety.

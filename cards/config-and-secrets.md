@@ -1,6 +1,6 @@
 # Configuration and secrets
 
-**Status:** Overview · **Stages:** 1, 6 · **Requirements:** GR-10 · **Code:** settings module, `.env`, `.env.example`
+**Status:** Stage 1 notes added, questions open · **Stages:** 1, 6 · **Requirements:** GR-10 · **Code:** settings module, `.env`, `.env.example`
 
 ## In one sentence
 Everything that differs between machines (URLs, model names, thresholds, keys) is read
@@ -37,4 +37,37 @@ API key are the two most sensitive values in the project.
 [encryption-and-retention](encryption-and-retention.md) · [ci-cd-and-deployment](ci-cd-and-deployment.md) · [inference-routing](inference-routing.md)
 
 ## Notes from the build
-_Empty — filled in during Stage 1._
+### Stage 1 — 2026-10-10
+
+**What was built**
+- [app/config.py](../app/config.py): one `Settings` class with four values so far —
+  `environment`, `database_url`, `log_level`, `log_format`.
+- [.env.example](../.env.example) is committed with placeholders; `.env` holds the real
+  values and is listed in [.gitignore](../.gitignore).
+- `get_settings()` is wrapped in `lru_cache`, so the environment is read once per process.
+
+**Decisions and why**
+- `database_url` is a `SecretStr`, because the URL contains the password. Printing the
+  settings shows `database_url=SecretStr('**********')`; code that needs the value must
+  ask for it explicitly with `.get_secret_value()`.
+- `log_level` and `log_format` are `Literal[...]` types, so a typo is rejected at startup
+  rather than silently ignored.
+- `extra="ignore"`: the same `.env` also carries `POSTGRES_*` variables that only Docker
+  Compose reads. Without this, pydantic would reject them as unknown.
+- Tests build `Settings(_env_file=None)` so a developer's local `.env` cannot change a test result.
+
+**Seen in practice**
+- `LOG_LEVEL=CHATTY` stops the app before it serves anything, with a message naming the
+  field and the allowed values.
+- The database password exists in two places in `.env`: `POSTGRES_PASSWORD` (for the
+  container) and inside `DATABASE_URL` (for the app). They must be kept in sync by hand.
+- [.github/workflows/ci.yml](../.github/workflows/ci.yml) contains the password `ci-only`
+  in plain text. Worth being able to explain why that one is acceptable.
+
+**Try it**
+- `LOG_LEVEL=CHATTY uv run python -c "import app.main"`
+- `uv run python -c "from app.config import get_settings; print(get_settings())"`
+- `git check-ignore -v .env` — shows which rule keeps it out of the repository.
+
+**Not met yet**
+- Encryption key and cloud API key (Stage 2 and 4), and where secrets live on the VPS (Stage 6).
