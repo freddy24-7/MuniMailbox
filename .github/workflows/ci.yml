@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: munimailbox
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: munimailbox
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U munimailbox"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Throwaway database that exists only for this job.
+      DATABASE_URL: postgresql+asyncpg://munimailbox:ci-only@localhost:5432/munimailbox
+      TEST_DATABASE_URL: postgresql+asyncpg://munimailbox:ci-only@localhost:5432/munimailbox
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Type check
+        run: uv run mypy app
+      - name: Migrations apply and match the models
+        run: uv run alembic upgrade head && uv run alembic check
+      - name: Tests
+        run: uv run pytest tests/unit tests/integration

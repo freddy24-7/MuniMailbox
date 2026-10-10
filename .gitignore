@@ -1,0 +1,21 @@
+# secrets
+.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# generated synthetic data and local databases
+data/synthetic/
+*.sqlite3
+
+# editors / OS
+.DS_Store
+.vscode/
+.idea/

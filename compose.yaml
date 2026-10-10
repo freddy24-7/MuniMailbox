@@ -1,0 +1,3 @@
+# Lets `docker compose up -d` work from the repository root; the stack itself lives in deploy/.
+include:
+  - deploy/docker-compose.yml
