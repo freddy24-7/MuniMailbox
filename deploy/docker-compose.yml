@@ -39,7 +39,68 @@ services:
     volumes:
       - redis_data:/data
 
+  # --- Monitoring (NFR-1 to NFR-3). Not started by default: these four containers only
+  # run with `docker compose --profile monitoring up -d`. Memory is capped per container.
+
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v3.1.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    extra_hosts:
+      # So the container can reach the app on the host, also on Linux.
+      - "host.docker.internal:host-gateway"
+    mem_limit: 256m
+
+  loki:
+    profiles: [monitoring]
+    image: grafana/loki:3.4.2
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - loki_data:/loki
+    mem_limit: 256m
+
+  alloy:
+    profiles: [monitoring]
+    image: grafana/alloy:v1.7.1
+    command: ["run", "/etc/alloy/config.alloy", "--storage.path=/var/lib/alloy/data"]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # The app writes logs/app.log when LOG_FILE is set.
+      - ../logs:/var/log/munimailbox:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on: [loki]
+    mem_limit: 192m
+
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:11.5.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # Localhost only. Set GRAFANA_ADMIN_PASSWORD in .env before exposing it anywhere.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [prometheus, loki]
+    mem_limit: 256m
+
 volumes:
+  prometheus_data:
+  loki_data:
+  alloy_data:
+  grafana_data:
   redis_data:
   postgres_data:
   chroma_data:

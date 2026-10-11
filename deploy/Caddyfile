@@ -1,0 +1,9 @@
+# HTTPS in front of the app (GR-11). Caddy gets and renews the certificate by itself.
+# Replace the domain, copy to /etc/caddy/Caddyfile, then `systemctl reload caddy`.
+munimailbox.example.org {
+	# Numbers for Prometheus are scraped on the machine itself, not from the internet.
+	@internal path /metrics
+	respond @internal 404
+
+	reverse_proxy 127.0.0.1:8000
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily: Delete personal data past its retention period (GR-2)
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+# Run at the next start if the machine was off at that time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

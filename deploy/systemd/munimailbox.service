@@ -1,0 +1,29 @@
+# The web app and its pipeline, kept running by systemd.
+# Install: copy to /etc/systemd/system/, then `systemctl enable --now munimailbox`.
+[Unit]
+Description=Municipal Inbox Assistant
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=munimailbox
+Group=munimailbox
+WorkingDirectory=/opt/munimailbox
+# Secrets live here, readable by root and this service only (GR-10). Never in the repository.
+EnvironmentFile=/etc/munimailbox/env
+# Bound to localhost: Caddy in front terminates HTTPS (GR-11).
+ExecStart=/opt/munimailbox/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+# Give running pipeline steps time to finish; unfinished events are redelivered by Redis.
+TimeoutStopSec=60
+
+# The service can write its log file and nothing else on the system.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/munimailbox/logs
+
+[Install]
+WantedBy=multi-user.target

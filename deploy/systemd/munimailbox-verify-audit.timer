@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily: Verify the audit hash chain (GR-8); fails if a record was changed
+
+[Timer]
+OnCalendar=*-*-* 03:45:00
+# Run at the next start if the machine was off at that time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

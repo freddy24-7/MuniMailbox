@@ -13,6 +13,7 @@ from app.db.models import AuditEvent, Email, EmailStatus
 from app.db.status import ALLOWED_TRANSITIONS, transition
 from app.events.bus import Event, EventBus
 from app.inference.router import UnredactedInputError
+from app.observability import metrics
 
 logger = structlog.get_logger(__name__)
 
@@ -119,16 +120,15 @@ class Orchestrator:
                     attempt=attempt + 1,
                     error_type=type(error).__name__,
                 )
+                metrics.AGENT_RETRIES.labels(agent=agent.name).inc()
                 await self._audit(event, agent, f"{agent.name}.retried")
                 # Wait longer each time: a struggling model server needs room, not pressure.
                 await asyncio.sleep(self._backoff_seconds * 2**attempt)
                 continue
             if ran is _Ran.NOW:
-                logger.info(
-                    "agent.completed",
-                    agent=agent.name,
-                    duration_ms=round((time.perf_counter() - started) * 1000),
-                )
+                duration = time.perf_counter() - started
+                metrics.AGENT_DURATION.labels(agent=agent.name).observe(duration)
+                logger.info("agent.completed", agent=agent.name, duration_ms=round(duration * 1000))
             return ran is not _Ran.NOT_NEEDED
         return False
 
@@ -158,6 +158,7 @@ class Orchestrator:
 
             if final:
                 transition(email, EmailStatus.DRAFT_READY)
+                time_to_draft = metrics.seconds_since(email.ingested_at)
             await audit.record(
                 session,
                 actor=f"agent:{agent.name}",
@@ -167,6 +168,9 @@ class Orchestrator:
                 left_local=result.left_local,
             )
             await session.commit()
+        if final:  # counted only once it is really saved
+            metrics.EMAILS_PROCESSED.labels(outcome="draft_ready").inc()
+            metrics.TIME_TO_DRAFT.observe(time_to_draft)
         return _Ran.NOW
 
     async def _audit(self, event: Event, agent: Agent, action: str) -> None:
@@ -178,10 +182,12 @@ class Orchestrator:
 
     async def _fail(self, event: Event, agent: Agent, error: Exception, *, action: str) -> None:
         logger.exception("agent.failed", agent=agent.name, error_type=type(error).__name__)
+        metrics.AGENT_FAILURES.labels(agent=agent.name).inc()
         async with self._session_factory() as session:
             email = await session.get_one(Email, event.email_id)
             if EmailStatus.NEEDS_ATTENTION in ALLOWED_TRANSITIONS[email.status]:
                 transition(email, EmailStatus.NEEDS_ATTENTION)
+                metrics.EMAILS_PROCESSED.labels(outcome="needs_attention").inc()
             await audit.record(
                 session, actor=f"agent:{agent.name}", action=action, email_id=email.id
             )

@@ -1,0 +1,58 @@
+# Alert rules (NFR-3). They show up in Prometheus and in Grafana under Alerting.
+groups:
+  - name: privacy
+    rules:
+      - alert: CloudCallWithoutRedactionRecord
+        # Computed from the audit trail and the redaction records, not by the router.
+        expr: munimailbox_cloud_calls_without_redaction_record > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: A model call left the local environment for an email with no redaction record.
+          description: Target is 0. Treat as a privacy incident; find the email in the audit log.
+
+      - alert: UnredactedInputRefused
+        expr: increase(munimailbox_inference_refusals_total[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: The router refused a model call because the input was not redacted.
+          description: The guard worked, but something tried to send unredacted text ({{ $labels.reason }}).
+
+  - name: pipeline
+    rules:
+      - alert: AppDown
+        expr: up{job="munimailbox"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The app does not answer on /metrics.
+
+      - alert: PipelineErrorRateHigh
+        expr: >
+          sum(rate(munimailbox_emails_processed_total{outcome="needs_attention"}[10m]))
+          / sum(rate(munimailbox_emails_processed_total[10m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 20% of emails end in "needs attention".
+
+      - alert: DraftsAreSlow
+        # NFR: median time from email received to draft ready under 60 seconds.
+        expr: >
+          histogram_quantile(0.5, sum by (le) (rate(munimailbox_time_to_draft_seconds_bucket[15m]))) > 60
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The median time to a draft is above 60 seconds.
+
+      - alert: EmailsStuckInProcessing
+        expr: munimailbox_emails_in_status{status="processing"} > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Emails have been in "processing" for 30 minutes.

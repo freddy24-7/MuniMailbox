@@ -22,3 +22,6 @@ data/synthetic/
 
 # public documents fetched by scripts/fetch_documents.py (not redistributed; see data/sources.toml)
 data/documents/
+
+# written by the app when LOG_FILE is set
+logs/

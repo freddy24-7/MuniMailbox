@@ -12,7 +12,8 @@ from app.auth.dependencies import current_user
 from app.main import app
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
-PUBLIC_PATHS = {"/healthz", "/readyz", "/login", "/login/{user_id}"}
+# /metrics has no user (Prometheus cannot log in); it can require a token instead.
+PUBLIC_PATHS = {"/healthz", "/readyz", "/metrics", "/login", "/login/{user_id}"}
 
 
 def _imports(path: Path) -> set[str]:

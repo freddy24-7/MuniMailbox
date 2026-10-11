@@ -1,0 +1,17 @@
+# Prometheus pulls numbers from the app's /metrics page every 15 seconds (NFR-1).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: munimailbox
+    metrics_path: /metrics
+    # The app runs on the host, not in a container.
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+    # If METRICS_TOKEN is set for the app, give Prometheus the same token:
+    # authorization:
+    #   credentials_file: /etc/prometheus/metrics_token

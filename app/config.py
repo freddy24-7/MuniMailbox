@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     environment: Literal["local", "test", "production"] = "local"
     # SecretStr keeps the value out of reprs, tracebacks and log lines.
     database_url: SecretStr
+    # If set, every log event is also appended here as JSON, for the log shipper (Loki).
+    log_file: Path | None = None
+    # If set, /metrics requires it as a bearer token.
+    metrics_token: SecretStr | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format: Literal["json", "console"] = "json"
 

@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.agents.base import AgentResult, EmailContext
 from app.db.models import Citizen, Email, PiiMapping, RedactionRecord
+from app.observability import metrics
 from app.privacy.crypto import Cipher
 from app.privacy.hints import known_values_for
 from app.privacy.original import OriginalEmail
@@ -58,4 +59,8 @@ class PrivacyAgent:
             )
         )
         await ctx.session.flush()
+        # Counts per type only: which values were replaced is never a metric.
+        metrics.REDACTIONS_PER_EMAIL.observe(len(result.mapping))
+        for entry in result.mapping:
+            metrics.REDACTIONS.labels(entity_type=entry.entity_type.value).inc()
         return AgentResult()

@@ -13,6 +13,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "nl-core-news-lg",
     "presidio-analyzer>=2.2.364",
+    "prometheus-client>=0.26.0",
     "pydantic-settings>=2.15.0",
     "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.1.4",
@@ -58,5 +59,12 @@ dev = [
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-playwright>=0.10.0",
     "ruff>=0.17.0",
 ]
+
+[tool.coverage.run]
+# SQLAlchemy's async layer runs on greenlets; without this, lines after an await on the
+# database are not seen as executed.
+concurrency = ["greenlet", "thread"]

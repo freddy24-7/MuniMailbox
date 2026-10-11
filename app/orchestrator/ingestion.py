@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import writer as audit
 from app.db.models import Citizen, Email
 from app.events.bus import Event, EventBus
+from app.observability import metrics
 from app.orchestrator.workflow import EMAIL_RECEIVED
 from app.privacy.crypto import Cipher
 from app.privacy.original import OriginalEmail
@@ -53,6 +54,7 @@ async def ingest_email(
     session.add(email)
     await audit.record(session, actor="system:intake", action=EMAIL_RECEIVED, email_id=email.id)
     await session.commit()
+    metrics.EMAILS_RECEIVED.inc()
     # Published only after the commit: a subscriber must be able to find the email.
     await bus.publish(Event(EMAIL_RECEIVED, email.id, email.correlation_id))
     return email

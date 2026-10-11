@@ -1,0 +1,223 @@
+{
+  "uid": "munimailbox-privacy",
+  "title": "Privacy events",
+  "tags": [
+    "munimailbox"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "title": "Cloud calls without a redaction record",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "munimailbox_cloud_calls_without_redaction_record"
+        }
+      ],
+      "description": "Must be 0. Computed from the audit trail and the redaction records.",
+      "options": {
+        "colorMode": "background"
+      },
+      "id": 1,
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Refused model calls (last 24 h)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(munimailbox_inference_refusals_total[24h]))"
+        }
+      ],
+      "description": "The router refused input that was not redacted.",
+      "id": 2
+    },
+    {
+      "title": "Local failures sent to the cloud (last 24 h)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(munimailbox_inference_local_failures_total[24h]))"
+        }
+      ],
+      "id": 3
+    },
+    {
+      "title": "Model calls: local and cloud",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (route, model) (increase(munimailbox_inference_calls_total[5m]))",
+          "legendFormat": "{{route}} · {{model}}"
+        }
+      ],
+      "id": 4
+    },
+    {
+      "title": "Personal values replaced, by type",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (entity_type) (increase(munimailbox_redactions_total[5m]))",
+          "legendFormat": "{{entity_type}}"
+        }
+      ],
+      "id": 5
+    },
+    {
+      "title": "Median number of values replaced per email",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(munimailbox_redactions_per_email_bucket[1h])))"
+        }
+      ],
+      "id": 6
+    },
+    {
+      "title": "Refusals in the logs",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 13,
+        "w": 16,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"munimailbox\"} | json | error_type=\"UnredactedInputError\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "id": 7
+    }
+  ]
+}

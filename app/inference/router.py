@@ -13,6 +13,7 @@ from app.audit import writer as audit
 from app.db.models import PiiMapping, RedactionRecord
 from app.inference.clients import ChatClient, Completion, EmbeddingClient
 from app.inference.prompts import render_prompt
+from app.observability import metrics
 from app.privacy.crypto import Cipher
 from app.privacy.redaction import RedactedText
 from app.rag.chunking import PublicText
@@ -143,6 +144,7 @@ class InferenceRouter:
                 logger.warning(
                     "inference.local_failed", prompt=prompt_name, error_type=type(error).__name__
                 )
+                metrics.LOCAL_FALLBACKS.inc()
                 await audit.record(
                     session, actor=actor, action="inference.local_failed", email_id=email_id
                 )
@@ -158,6 +160,12 @@ class InferenceRouter:
             email_id=email_id,
             model=completion.model,
             left_local=left_local,
+        )
+        route = "cloud" if left_local else "local"
+        metrics.INFERENCE_CALLS.labels(route=route, model=completion.model).inc()
+        metrics.INFERENCE_TOKENS.labels(route=route, kind="prompt").inc(completion.prompt_tokens)
+        metrics.INFERENCE_TOKENS.labels(route=route, kind="completion").inc(
+            completion.completion_tokens
         )
         logger.info(
             "inference.completed",
@@ -196,6 +204,7 @@ class InferenceRouter:
             select(RedactionRecord.id).where(RedactionRecord.email_id == email_id)
         )
         if has_record is None:
+            metrics.INFERENCE_REFUSALS.labels(reason="no_redaction_record").inc()
             raise UnredactedInputError("no redaction record for this email")
 
         # Defence in depth: the type says "redacted", this checks it. If any value the
@@ -206,4 +215,5 @@ class InferenceRouter:
         originals = [self._cipher.decrypt(value) for value in encrypted_values]
         for text in texts:
             if any(original in text for original in originals):
+                metrics.INFERENCE_REFUSALS.labels(reason="unredacted_value").inc()
                 raise UnredactedInputError("input contains a value that should be redacted")

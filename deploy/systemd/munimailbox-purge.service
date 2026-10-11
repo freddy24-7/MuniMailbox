@@ -1,0 +1,15 @@
+[Unit]
+Description=Delete personal data past its retention period (GR-2)
+After=munimailbox.service
+
+[Service]
+Type=oneshot
+User=munimailbox
+Group=munimailbox
+WorkingDirectory=/opt/munimailbox
+EnvironmentFile=/etc/munimailbox/env
+ExecStart=/opt/munimailbox/.venv/bin/python scripts/purge_expired.py
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
