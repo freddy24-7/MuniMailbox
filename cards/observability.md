@@ -1,6 +1,6 @@
 # Observability: metrics, logs, dashboards, alerts
 
-**Status:** Stage 1 notes added, questions open · **Stages:** 1 (logs, correlation ID), 6 · **Requirements:** NFR-1, NFR-2, NFR-3 · **Code:** `app/observability/`, `deploy/`
+**Status:** Stage 6 notes added, questions open · **Stages:** 1 (logs, correlation ID), 6 · **Requirements:** NFR-1, NFR-2, NFR-3 · **Code:** `app/observability/`, `deploy/`
 
 ## In one sentence
 The running system continuously reports what it is doing, in numbers and in structured
@@ -87,3 +87,58 @@ A real line from the running app:
 **Not met yet**
 - Metrics, Prometheus, Loki, Grafana, alerts (Stage 6).
 - The email's own correlation ID, bound by the orchestrator rather than by an HTTP request (Stage 2).
+
+### Stage 6 — 2026-10-11 (metrics, Loki, Grafana, alerts)
+
+**What was built**
+- [app/observability/metrics.py](../app/observability/metrics.py): the metrics, and
+  `GET /metrics` in [app/api/health.py](../app/api/health.py) for Prometheus to scrape.
+- A JSON copy of every log event in a file (`LOG_FILE`), for the log shipper.
+- In `deploy/`, as a Compose profile that is off by default: Prometheus with six alert
+  rules, Loki, Grafana Alloy (ships the log file to Loki) and Grafana with three
+  dashboards: system health, agent performance, privacy events.
+
+**The three kinds of record, and which question each answers**
+
+| | Answers | Example here |
+| --- | --- | --- |
+| Metric | How much, how often, how fast? | Median duration of the drafting agent |
+| Log | What happened to this one email? | Its nine lines, by correlation ID |
+| Audit event | Who did what, and can that be proven? | "Caseworker X approved draft Y" |
+
+**Decisions and why**
+- **No identifiers in metrics.** A label has a small, fixed set of values (an agent name,
+  `local` or `cloud`). An email ID as a label would create one time series per email. A
+  test checks that the metrics page contains no email ID, correlation ID or personal value.
+- **Histograms, not averages.** Durations are counted into buckets, so Prometheus can
+  compute a median or a 95th percentile afterwards. An average hides the slow tail.
+- **Counters are increased after the commit.** "Emails processed" only goes up once the
+  result is really saved.
+- **Queue length is read from the database at scrape time,** not counted up and down in
+  memory. It is a fact about the data, and stays right after a restart.
+- **The privacy alert does not trust the component it guards.** "Cloud calls without a
+  redaction record" compares the audit trail with the redaction records. If the router's
+  check were ever bypassed, this number would still show it. A test makes it show 1.
+- **The correlation ID is a field in the log line, not a Loki label,** for the same
+  reason as with metrics. It is found with `| json | correlation_id="..."`.
+- **`/metrics` has no login,** because Prometheus cannot log in. It can require a token
+  (`METRICS_TOKEN`), and the reverse proxy does not serve it to the internet.
+
+**Seen in practice**
+- With the stack running and two emails processed: Prometheus reported the app as up and
+  each agent as run twice; Grafana had loaded both data sources and the three dashboards;
+  Loki returned one email's journey in order (privacy 111 ms, intake 5 ms, ...).
+- Before the app was started, the `AppDown` alert went to "pending" by itself. The first
+  alert that ever fired in this project was a correct one.
+- The four monitoring containers used about 170 MB together.
+- Checked through the services' APIs; the dashboards were not looked at in a browser.
+
+**Try it**
+- `docker compose --profile monitoring up -d`, start the app, fetch an email, then open
+  Grafana on http://localhost:3000 (admin / admin) → "Agent performance", and paste the
+  email's correlation ID in the box at the top.
+- `curl -s localhost:8000/metrics | grep munimailbox_emails`
+
+**Still open**
+- Alerts are only shown; nothing sends an email or a message when one fires.
+- No metric for the event bus itself (how many events are waiting or unacknowledged).

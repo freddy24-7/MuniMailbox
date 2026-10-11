@@ -1,6 +1,6 @@
 # Configuration and secrets
 
-**Status:** Stage 1 notes added, questions open · **Stages:** 1, 6 · **Requirements:** GR-10 · **Code:** settings module, `.env`, `.env.example`
+**Status:** Stage 6 notes added, questions open · **Stages:** 1, 6 · **Requirements:** GR-10 · **Code:** settings module, `.env`, `.env.example`
 
 ## In one sentence
 Everything that differs between machines (URLs, model names, thresholds, keys) is read
@@ -71,3 +71,35 @@ API key are the two most sensitive values in the project.
 
 **Not met yet**
 - Encryption key and cloud API key (Stage 2 and 4), and where secrets live on the VPS (Stage 6).
+
+### Stage 6 — 2026-10-11 (what the later stages added)
+
+**What changed since Stage 1**
+- The settings grew with every stage: models, retrieval, retries, the event bus,
+  monitoring. All still one class, [app/config.py](../app/config.py), and every variable
+  is listed in `.env.example` with a comment.
+- Four secrets now: `ENCRYPTION_KEY`, `SESSION_SECRET`, `CLOUD_LLM_API_KEY` and
+  (optional) `METRICS_TOKEN`. All are `SecretStr`: printing the settings shows `**********`.
+
+**Decisions and why**
+- **Risky things are off by default.** The cloud model needs `CLOUD_LLM_ENABLED=true`;
+  the deploy job needs a repository variable; monitoring needs a Compose profile. Doing
+  nothing gives the safe behaviour.
+- **Thresholds are settings, not numbers in the code:** the redaction score, the recall
+  gate, the similarity floor, the retry limit. Each has a comment saying what moves when
+  it changes; the similarity floor's comment carries the measured ranges.
+- **Tests never read `.env`.** They build `Settings(_env_file=None)` with their own
+  values. A test that passes only because of what is in your `.env` is the kind of
+  difference that made CI fail in Stage 6.
+- **On a server, secrets live in `/etc/munimailbox/env`,** readable by root and the
+  service only, loaded by systemd. In CI, throwaway keys are generated per run; the
+  deploy key and server address are GitHub secrets.
+
+**Seen in practice**
+- A model on Mistral's free plan was listed but allowed zero requests per minute. The fix
+  was one line in `.env`, with no code change: that is what "configuration" is for.
+- Development on an 8 GB laptop was made possible by settings alone: a smaller model, one
+  model call at a time, the cloud route for chat.
+
+**Still open**
+- No rotation of the encryption key: replacing it means re-encrypting what is stored.

@@ -148,3 +148,35 @@ true if a test tries to break them and fails.
 - No retrieval test set, no prompt evaluation set. Both are measurements this stage needs
   before its choices (chunk size, similarity floor, prompt v2) can be called good.
 - The surname miss is not yet a case in `hard_cases.py`.
+
+### Stage 6 — 2026-10-11 (browser tests, coverage, and a lesson from CI)
+
+**Kinds of test that arrived**
+- **Browser tests** ([tests/e2e/](../tests/e2e/)): Playwright drives a real browser
+  against the real app in its own process. Real HTTP, real database, real redaction and
+  pipeline; only the models and the vector store are fakes. Three journeys: an email from
+  inbox to approved reply, the auditor who cannot see the person, the team lead who can
+  reassign but not approve.
+- **A coverage gate:** CI fails below 70% (the PRD's target); it measures about 91%.
+- **Tests against a real Redis,** skipped when none is configured.
+
+**Decisions and why**
+- The browser tests wait for what a user would see ("draft ready" appears in the queue),
+  never for a number of seconds.
+- They assert the PRD's acceptance criteria literally: at least one source link, restored
+  data for the caseworker, placeholders in what is stored.
+- Coverage needed one setting to be honest: without `concurrency = ["greenlet"]`, lines
+  after a database `await` were counted as never run.
+
+**Seen in practice**
+- The test pyramid as it stands: about 150 unit tests, about 85 integration tests, 3
+  browser tests. The browser tests take as long as all the others together.
+- A test that passed 100% locally failed about half the time in CI. It depended on two
+  emails finishing in order, which only SQLite guarantees. Running the same tests four
+  times on PostgreSQL after the fix was the proof, not one green run.
+- Measuring was repeatedly what changed the picture: redaction "99.8%" hid the towns,
+  "hybrid search" was not better than semantic, the small model's drafts were unusable.
+
+**Still open**
+- No test set for classification accuracy (the PRD asks for 90%) or for draft quality.
+- The browser tests run the fake model; no automated test covers a real model's output.

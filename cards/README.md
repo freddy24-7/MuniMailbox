@@ -39,6 +39,12 @@ this project, questions to be able to answer, related cards, notes from the buil
 | [observability](observability.md) | Metrics, logs, dashboards, alerts | Stage 1 (logs) | Stage 6 |
 | [ci-cd-and-deployment](ci-cd-and-deployment.md) | CI/CD, Docker Compose, systemd | Stage 1 (CI) | Stage 6 |
 
+## Where things stand
+
+All six stages are built (2026-10-11). Every card has notes from each stage it belongs
+to; the "Questions to be able to answer" are left open on purpose. Deployment to a server
+is written but was never run: see [ci-cd-and-deployment](ci-cd-and-deployment.md).
+
 ## Stages (short version)
 
 1. Foundations

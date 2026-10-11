@@ -1,6 +1,6 @@
 # CI/CD, Docker Compose and systemd
 
-**Status:** Stage 1 notes added, questions open · **Stages:** 1 (CI), 6 · **Requirements:** GR-11, NFR portability · **Code:** `.github/workflows/`, `deploy/`
+**Status:** Stage 6 notes added, questions open · **Stages:** 1 (CI), 6 · **Requirements:** GR-11, NFR portability · **Code:** `.github/workflows/`, `deploy/`
 
 ## In one sentence
 Every push is checked automatically, and a push to main that passes is built and rolled
@@ -76,3 +76,50 @@ nine-part stack usable by one developer.
 **Not met yet**
 - No deploy job, no VPS, no systemd, no HTTPS, no image for the app itself (Stage 6).
 - The PII recall gate and the Playwright job (Stages 3 and 6).
+
+### Stage 6 — 2026-10-11 (browser tests in CI, deployment written but not run)
+
+**What was built**
+- CI now also starts a Redis, enforces test coverage of at least 70%, and runs the
+  browser tests ([tests/e2e/](../tests/e2e/)).
+- A `deploy` job in the same workflow: after the tests pass on `main`, it logs in to a
+  server over SSH and runs [deploy/deploy.sh](../deploy/deploy.sh).
+- [deploy/systemd/](../deploy/systemd/): the app as a service, and two daily timers
+  (retention purge, audit-chain check). [deploy/Caddyfile](../deploy/Caddyfile): HTTPS.
+- [deploy/README.md](../deploy/README.md): the one-time server setup.
+
+**Decisions and why**
+- **Deployment is a job that needs the test job.** A commit that fails a test cannot
+  reach the server; there is no separate button to forget.
+- **The deploy job is off until a repository variable switches it on.** A copy of the
+  repository without a server skips it instead of failing.
+- **The server's identity is pinned** (`StrictHostKeyChecking=yes` with a stored key), so
+  the job cannot be tricked into sending the code to another machine.
+- **Deploy, check, roll back.** `deploy.sh` installs the commit, migrates, restarts, and
+  asks `/readyz` whether the app answers. If not, it puts the previous commit back.
+- **Migrations only add.** The previous version of the code keeps working with the new
+  schema; that is what makes rolling back the code safe.
+- **systemd restarts the app when it crashes,** and Redis redelivers the events that were
+  not finished. The two together are what "reliable" means here.
+- **The service can write its log file and nothing else** (`ProtectSystem=strict`).
+
+**Seen in practice**
+- CI failed twice on GitHub with a test that passed every time locally. The test assumed
+  two emails finish in the order they arrived; on PostgreSQL they run in parallel and
+  sometimes do not. Local runs used SQLite, where there is one writer at a time. The fix
+  was in the test, and the lesson is older than this project: a test that only runs on a
+  simpler setup than production proves less than it seems to.
+- Reproducing it needed CI's exact conditions: PostgreSQL, Redis and no `.env` file.
+- **Decided not to rent a server.** The app runs locally and is presented through the
+  README. So the deploy job, the systemd units, the Caddy configuration and `deploy.sh`
+  have never run. The acceptance criterion "a push to main deploys without manual steps"
+  is built, not met.
+
+**Try it**
+- Open the Actions tab on GitHub: the `deploy` job is listed as skipped, with the reason.
+- Read `deploy/deploy.sh` and find the two places where it can exit, and with what.
+
+**Still open**
+- Everything under "deployment" until it has run on a real server once.
+- No container image of the app itself; on the server it runs from a checkout.
+- A public address would need a lock first: the demo login has no passwords.
