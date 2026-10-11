@@ -36,7 +36,10 @@
     form { display: inline; }
     header nav a { margin-left: 14px; }
     select, input { font: inherit; padding: 5px 8px; }
-    table.numbers td:last-child { text-align: right; }
+    table.numbers td:last-child, table.numbers th:last-child { text-align: right; }
+    table + h2 { margin-top: 18px; }
+    /* Panels side by side start at the same height; the stacking margin is for panels below each other. */
+    .cols > .panel + .panel { margin-top: 0; }
     form.block { display: block; margin: 8px 0; }
     textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; }
     label { margin-right: 10px; }
