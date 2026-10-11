@@ -1,6 +1,6 @@
 # Hybrid local/cloud inference routing
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 2, 4 · **Requirements:** FR-13, FR-14 · **Code:** `app/inference/router.py`, `app/inference/`
+**Status:** Stage 4 notes added, questions open · **Stages:** 2, 4 · **Requirements:** FR-13, FR-14 · **Code:** `app/inference/router.py`, `app/inference/`
 
 ## In one sentence
 Every model call in the app goes through one router that decides *which* model answers
@@ -83,3 +83,55 @@ first. It is also where cost, latency and model choice are decided and recorded.
 **Not met yet (Stage 4)**
 - The cloud route, the size/complexity rule, fallback after a local failure, `left_local=True`.
 - Check 2 only knows about values that were *detected*. It cannot notice PII the redactor missed.
+
+### Stage 4 — 2026-10-11 (cloud route, structured output, embeddings, a concurrency limit)
+
+**What was built**
+- The cloud route in [app/inference/router.py](../app/inference/router.py), off unless
+  `CLOUD_LLM_ENABLED=true`. `.env.example` points it at Mistral (EU, same API format).
+- `complete_json()`: the answer is validated against a Pydantic schema.
+- `embed_query()` for email text and `embed_public()` for documents.
+- A limit on simultaneous calls to the local server (`LOCAL_LLM_MAX_CONCURRENCY`, default 1).
+
+**Decisions and why**
+- **The routing rule is two lines.** A request goes to the cloud when the email text is
+  longer than `CLOUD_ROUTE_MIN_CHARS` (6000), or when the local model fails. "Complexity"
+  is measured as size, because size is the one thing known before the call.
+- **One check guards both routes.** `_require_redacted` runs before the router decides
+  where the request goes. There is no path on which unredacted text is acceptable.
+- **An answer that does not fit the schema counts as a failure of that model**, like a
+  timeout. With a cloud model configured it falls back; without one the agent is retried.
+- **Errors never quote the model.** `InvalidModelOutputError` carries a count of
+  validation errors, not the text, because error messages end up in logs.
+- **A fallback is audited twice**: `inference.local_failed`, then `inference.completed`
+  with the cloud model's name and `left_local=True`.
+- **Embedding email text is guarded like a chat call.** An embedding model is still a
+  model; the query is the redacted email.
+- **Chat and embedding calls share one semaphore.** They go to the same machine. Five
+  emails can be in the pipeline at once, but only one call reaches Ollama at a time.
+  Cloud calls are not limited.
+
+**Seen in practice**
+- This laptop has 8 GB of RAM. `gemma3:4b` (4–5 GB) plus the embedding model, the Docker
+  VM and spaCy did not fit: the machine swapped until the session died. The cause was
+  memory; it looked like CPU.
+- `gemma3:1b` fits (lowest point: 25% of memory free) and is not good enough. Its draft
+  was one line, "Geachte heer/mevrouw,", and its quality report left out a required field
+  three times. It also marked a bin complaint as sensitive.
+- So the local/cloud question stopped being theoretical. The reasons to leave the machine
+  are not only "the request is large" but also "the hardware cannot hold a model that is
+  good enough".
+- The cloud route has only been exercised with fake models so far, never a real provider.
+
+**Try it**
+- Read the four cloud tests in [tests/integration/test_router.py](../tests/integration/test_router.py),
+  especially `test_the_cloud_route_refuses_unredacted_text_exactly_like_the_local_one`.
+- Set `LOCAL_LLM_MAX_CONCURRENCY=2` in a test and see which assertion changes.
+
+**Still open**
+- Which model for real runs on this machine: Mistral through the cloud route, or
+  `gemma3:4b` with everything else closed.
+- The fallback only triggers on an error or invalid output. A valid but poor answer
+  (the one-line draft) stays local.
+- What happens when local and cloud both fail: today the agent is retried, then the email
+  goes to "needs attention". No alert yet (Stage 6).

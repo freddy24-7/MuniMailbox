@@ -1,6 +1,6 @@
 # Testing strategy and quality gates
 
-**Status:** Stage 1 notes added, questions open · **Stages:** all · **Requirements:** GR-4, NFR maintainability · **Code:** `tests/unit`, `tests/integration`, `tests/e2e`, `tests/pii_testset`
+**Status:** Stage 3 notes added, questions open · **Stages:** all · **Requirements:** GR-4, NFR maintainability · **Code:** `tests/unit`, `tests/integration`, `tests/e2e`, `tests/pii_testset`
 
 ## In one sentence
 Different kinds of tests answer different questions, and a few of them act as gates that
@@ -74,3 +74,77 @@ true if a test tries to break them and fails.
 - No bypass tests: there is no rule to bypass yet. The first is "the router refuses unredacted input" (Stage 2).
 - No LLM mock, no Playwright, no recall gate.
 - Coverage is not measured; that needs `pytest-cov`, a dependency to approve.
+
+### Stage 2 and 3 — 2026-10-10
+
+**Where the suite stands**
+- 122 tests on PostgreSQL, 118 on SQLite (four are PostgreSQL-only), plus the recall
+  gate. LLM calls are faked everywhere.
+
+**Kinds of test that arrived**
+- **Bypass tests** — build the system wrongly on purpose and check the rule still holds.
+  `test_a_workflow_that_skips_the_privacy_agent_never_reaches_the_model` leaves the
+  privacy agent out; the "outsider" in [test_scope.py](../tests/integration/test_scope.py)
+  has every permission and the wrong team.
+- **Architecture tests** — [test_architecture.py](../tests/unit/test_architecture.py)
+  reads the source: who imports the model client, where `OutboxMessage(` is written,
+  which endpoints lack a login check. They fail on a change that no behavioural test notices.
+- **A metric gate** — [test_recall.py](../tests/pii_testset/test_recall.py) computes a
+  number and compares it with a threshold from the settings.
+- **Precision tests** — sentences that must come through unchanged. Without them, a
+  redactor that replaces everything would pass the recall gate.
+
+**Decisions and why**
+- `FakeLLM` records every prompt it receives. The assertion "no personal value reached
+  the model" is made on exactly what a real model would have been sent.
+- The test set is **generated at test time** from a seed, not stored as a file. No file
+  with 300 valid-looking BSNs is committed.
+- Time is a parameter (`purge_expired(now=...)`), so retention is tested without waiting.
+- "Add the case first, then fix": a miss becomes a template in `hard_cases.py`.
+
+**Seen in practice**
+- One test failed 5 runs out of 12 on SQLite and never on PostgreSQL. The cause was a
+  real race on the audit chain that only PostgreSQL's lock prevents. An intermittent
+  failure was a correct finding, not noise; the fix was to say so in the test, not to retry.
+- A new FastAPI version changed how included routers are stored and broke the
+  "every endpoint needs a login" test. That test asserts equality with the list of
+  public paths, so it failed loudly instead of silently finding nothing.
+
+**Still open**
+- Coverage is still not measured. No end-to-end browser test yet (Stage 6).
+
+### Stage 4 — 2026-10-11
+
+**Kinds of test that arrived**
+- **Fakes that answer per prompt.** `FakeLLM` now replies in each agent's own format
+  (classification, draft with sources, quality report). A test steers the "model" by
+  setting an attribute: `fake_llm.sources_used = [1, 7]`.
+- **A fake embedder and an in-memory vector store**, behind the same interfaces as Ollama
+  and ChromaDB. The whole pipeline runs in tests with no model and no container.
+- **The bypass test, per agent and per route.** Each agent that reaches a model is run
+  without a redaction record and must be refused; the cloud route gets the same test as
+  the local one, with and without a failing local model.
+- **A concurrency test.** Slow fakes count how many calls are inside a model at once; the
+  maximum must equal the configured limit.
+
+**Decisions and why**
+- Retrieval tests use hand-made two-number vectors (`[1.0, 0.0]`). What is tested is the
+  merging and the floor, not the embedding model.
+- Tests set `retry_backoff_seconds=0`: the retry logic is tested, the waiting is not.
+- On SQLite the two parallel agents run one after the other. The parallel path is only
+  exercised on PostgreSQL (CI, or a throwaway local database).
+
+**Seen in practice**
+- 164 tests pass on SQLite in about 13 seconds.
+- Writing a test for "a number with different spacing is the same number" found a real
+  bug in the quality rules (see [grounded-drafting-and-quality](grounded-drafting-and-quality.md)).
+- A made-up surname in a test, "Voorbeeld", was not redacted: it is a common noun.
+  Realistic surnames were. A test name is test data too.
+- The mocked tests could not show that `gemma3:1b` is too weak. One real email could.
+  Fakes prove the plumbing; only a real model shows the quality.
+- On this 8 GB machine, tests, type check and a model run are done one after another.
+
+**Still open**
+- No retrieval test set, no prompt evaluation set. Both are measurements this stage needs
+  before its choices (chunk size, similarity floor, prompt v2) can be called good.
+- The surname miss is not yet a case in `hard_cases.py`.

@@ -30,6 +30,7 @@ jobs:
       # Tests use a fake model; nothing listens here.
       LOCAL_LLM_BASE_URL: http://llm.invalid/v1
       LOCAL_LLM_MODEL: not-a-real-model
+      EMBEDDING_MODEL: not-a-real-embedding-model
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

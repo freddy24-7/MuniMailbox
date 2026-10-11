@@ -1,6 +1,6 @@
 # Synthetic data
 
-**Status:** Stage 1 notes added, questions open · **Stages:** 1, 3 · **Requirements:** GR-9, GR-4 · **Code:** `scripts/generate_synthetic.py`, `tests/pii_testset/`
+**Status:** Stage 3 notes added, questions open · **Stages:** 1, 3 · **Requirements:** GR-9, GR-4 · **Code:** `scripts/generate_synthetic.py`, `tests/pii_testset/`
 
 ## In one sentence
 Every citizen, case and email in the project is generated, never real, yet realistic
@@ -76,3 +76,14 @@ email, redaction recall can be measured.
 - Hard cases on purpose: PII in the subject, two people in one email, a BSN written with
   dots, a name that is also an ordinary word (Stage 3, with the PII test set).
 - LLM-written email texts for variety.
+
+### Stage 3 — 2026-10-10
+
+- Every template slot now also exists as `other_<slot>`: the same kind of value for a
+  second person. `render_email(template, citizen, rng, other)` fills both.
+- New slot variants write the same value the way people do: `bsn_dotted`, `iban_spaced`,
+  `phone_mobile`, `postcode_lower`, `name_lower`, `plain_street_address`.
+- [tests/pii_testset/hard_cases.py](../tests/pii_testset/hard_cases.py) holds ten
+  templates built to be difficult; the feed still uses the original twelve.
+- One hard case contains a nine-digit case number that is *not* a BSN. It is there to be
+  left alone.

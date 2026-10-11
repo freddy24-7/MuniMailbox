@@ -1,6 +1,6 @@
 # Grounded drafting, prompts and quality checks
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 2 (basic draft), 4 · **Requirements:** FR-6, FR-10, FR-11, FR-17 · **Code:** `prompts/`, `app/agents/drafting.py`, `app/agents/quality.py`, `app/agents/intake.py`
+**Status:** Stage 4 notes added, questions open · **Stages:** 2 (basic draft), 4 · **Requirements:** FR-6, FR-10, FR-11, FR-17 · **Code:** `prompts/`, `app/agents/drafting.py`, `app/agents/quality.py`, `app/agents/intake.py`
 
 ## In one sentence
 The model is given the redacted email, the retrieved sources and the case context, is
@@ -75,3 +75,65 @@ three layers against it.
 
 **Not met yet (Stage 4)**
 - Sources in the prompt, citation by ID, structured output, the quality agent, few-shot examples.
+
+### Stage 4 — 2026-10-11 (sources, citations, classification, a second opinion)
+
+**What was built**
+- [prompts/intake.v1.md](../prompts/intake.v1.md) and
+  [app/agents/intake.py](../app/agents/intake.py): classification into six topics, three
+  urgency levels and a sensitive flag.
+- [prompts/draft_reply.v2.md](../prompts/draft_reply.v2.md): the draft prompt now gets
+  BRONNEN (numbered passages) and EERDER CONTACT (case history), and must answer as JSON:
+  `{"reply": "...", "sources_used": [1, 2]}`.
+- [prompts/quality.v1.md](../prompts/quality.v1.md) and
+  [app/agents/quality.py](../app/agents/quality.py): rule-based checks plus a second
+  model call.
+- The review page shows warnings above the draft, the cited sources with links and fetch
+  dates, and every passage the model was given.
+
+**Decisions and why**
+- **The model cites a number; the code looks up the link.** The prompt contains
+  `[1] <text>` and no URLs. Title, heading, URL and fetch date come from our own record
+  of passage 1. A link cannot be made up because the model never writes one.
+- **A cited number that was not offered is dropped and reported** as an
+  `invalid_citation` warning. Never silently.
+- **The closed label set is enforced by the schema, not by the prompt.** `Classification`
+  has enum fields; "taxes" fails validation and never reaches the database.
+- **Two kinds of quality check, labelled by origin.**
+
+  | | Rule (`origin: rule`) | Model (`origin: model`) |
+  | --- | --- | --- |
+  | Finds | a number or amount that is in no source, an unknown placeholder, no source cited | tone, an unanswered question, an unsupported claim, a contradiction |
+  | Strength | exact, cannot be talked out of its answer | understands meaning |
+  | Weakness | sees only patterns | can itself be wrong |
+
+- **Warnings inform, they block nothing.** The caseworker decides; a warning is a pointer
+  to what to check.
+- **When nothing relevant is found, the prompt says so** ("(geen bronnen gevonden)") and
+  tells the model to write a holding reply. The draft gets a `no_source` warning.
+- **A number the citizen wrote counts as supported.** "U schrijft dat u 3 weken wacht"
+  repeats the email; it is not an invented fact.
+
+**Seen in practice**
+- A test found a bug in the rule check: the pattern for amounts swallowed the full stop,
+  so "€25." at the end of a sentence was reported as unsupported although "€ 25" was in
+  the source. Rules are exact, including when they are exactly wrong.
+- `gemma3:1b` on a real email: it cited sources 1 and 2 and wrote a reply of one line.
+  Valid JSON, valid citations, useless answer. Structure can be validated; quality cannot.
+- The same model's quality report was `{"warnings": [{"type": "tone"}]}`: no message.
+  The schema rejected it three times.
+- It also classified a bin that was not emptied as `sensitive: true`.
+
+**Try it**
+- `uv run pytest tests/unit/test_quality_rules.py -v` and read the test names as a list
+  of what the rules promise.
+- In the test `test_a_source_the_model_was_not_given_is_dropped_and_reported`, the fake
+  model cites source 7. Follow what happens to it in `drafting.py`.
+
+**Still open**
+- The NFR "100% of drafts have at least one valid source" is not met when retrieval finds
+  nothing; those drafts carry a warning instead. Is a warned holding reply acceptable?
+- No few-shot examples in the prompts yet.
+- No way to tell whether prompt v2 is *better* than v1: there is no evaluation set.
+- The "unsupported number" rule knows euros, durations and 14-numbers. It does not know
+  dates, percentages or article numbers.

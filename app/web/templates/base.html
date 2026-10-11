@@ -26,6 +26,11 @@
     .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #e6ebf0; }
     .badge.draft_ready { background: #fff1c2; } .badge.approved { background: #cdeed3; }
     .badge.needs_attention, .badge.rejected { background: #f8d2d2; } .badge.processing { background: #d5e6fb; }
+    .badge.urgency-high, .badge.sensitive { background: #f8d2d2; }
+    .panel + .panel, .cols + .panel { margin-top: 16px; }
+    ul.plain { margin: 0; padding-left: 18px; }
+    .warning { padding: 8px 12px; border-left: 4px solid #d99a00; background: #fff8e1; margin: 0 0 8px; }
+    .warning .muted { font-size: 13px; }
     button { font: inherit; padding: 7px 14px; border: 1px solid var(--accent); border-radius: 5px; background: var(--accent); color: #fff; cursor: pointer; }
     button.plain { background: #fff; color: var(--accent); }
     form { display: inline; }

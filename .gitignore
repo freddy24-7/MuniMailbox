@@ -19,3 +19,6 @@ data/synthetic/
 .DS_Store
 .vscode/
 .idea/
+
+# public documents fetched by scripts/fetch_documents.py (not redistributed; see data/sources.toml)
+data/documents/

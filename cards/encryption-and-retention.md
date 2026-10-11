@@ -1,6 +1,6 @@
 # Encryption at rest, restoration and retention
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 3 · **Requirements:** FR-12, GR-2, GR-3 · **Code:** `app/privacy/` (mapping store, restore)
+**Status:** Stage 3 notes added, questions open · **Stages:** 3 · **Requirements:** FR-12, GR-2, GR-3 · **Code:** `app/privacy/` (mapping store, restore)
 
 ## In one sentence
 The table that links each placeholder back to the real value is stored encrypted, opened
@@ -69,3 +69,41 @@ controls on the same risk.
 
 **Not met yet (Stage 3)**
 - The retention job that deletes old mappings; key rotation; what the UI shows once a mapping is gone.
+
+### Stage 3 — 2026-10-10 (retention)
+
+**What was built**
+- [app/privacy/retention.py](../app/privacy/retention.py): `purge_expired()`.
+- [scripts/purge_expired.py](../scripts/purge_expired.py): runs it; meant for a daily timer.
+- `Email.ingested_at`: when *we* started holding the data. The retention clock starts here.
+- Setting `PII_RETENTION_DAYS`, default 30.
+
+**What a purge does to one email**
+1. Deletes its rows in `pii_mappings`.
+2. Sets `Email.original_encrypted` to null.
+3. Writes an audit event `pii.purged`.
+
+What remains: the redacted subject and body, the draft with placeholders, the audit
+trail. `[PERSON_1]` is still in the text, and nobody, including us, can say who it was.
+
+**Decisions and why**
+- Mapping **and** original go together. Deleting only the mapping would leave the full
+  email one decryption away, and the purge would be for show.
+- The clock is `ingested_at`, not the email's own `received_at`. The second is the date
+  on the message; the first is how long we have had it.
+- A purged email can still be opened: the page shows the redacted text and says why.
+  It can no longer be approved (409), because the reply could not be addressed.
+- Purging is audited like everything else. Deleting data and never deleting audit rows
+  do not conflict, because audit rows never held the data.
+
+**Seen in practice**
+- `test_after_the_period_the_person_is_gone_and_the_process_remains` moves the clock
+  forward 31 days instead of waiting; `purge_expired(now=...)` takes the time as a parameter.
+
+**Try it**
+- `uv run python scripts/purge_expired.py` (purges nothing today).
+- Set `PII_RETENTION_DAYS=0` in `.env`, run it again, open an email in the app. Set it back.
+
+**Still open**
+- The outbox keeps its encrypted copy of each sent reply indefinitely.
+- Nothing schedules the job yet (Stage 6). Key rotation is not built.

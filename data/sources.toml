@@ -1,0 +1,71 @@
+# The knowledge base: public pages of the municipality of Utrecht, used as a stand-in for
+# the fictional municipality in this demo. Only this list is in the repository; the page
+# texts are fetched into data/documents/ (git-ignored) by scripts/fetch_documents.py.
+#
+# topic is one of: permits, waste_collection, benefits, complaints, address_change, other
+
+[[source]]
+topic = "waste_collection"
+urls = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/welk-afval-in-welke-bak",
+  "https://www.utrecht.nl/wonen-en-leven/afval/ophaaldag",
+  "https://www.utrecht.nl/wonen-en-leven/afval/klikos",
+  "https://www.utrecht.nl/wonen-en-leven/afval/ondergrondse-containers",
+  "https://www.utrecht.nl/wonen-en-leven/afval/afvalscheidingsstations",
+  "https://www.utrecht.nl/wonen-en-leven/afval/boete-voor-verkeerd-aangeboden-afval",
+  "https://loket.digitaal.utrecht.nl/nl/producten/grofvuil-afspraak-maken-voor-ophalen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/snoeiafval-afspraak-maken-voor-ophalen",
+]
+
+[[source]]
+topic = "permits"
+urls = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/parkeervergunning-bewoner-aanvragen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/parkeervergunning-bewoner-kenteken-aanpassen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/parkeervergunning-verhuizing-doorgeven",
+  "https://loket.digitaal.utrecht.nl/nl/producten/parkeerkorting-voor-bezoek-aanvragen",
+  "https://www.utrecht.nl/wonen-en-leven/parkeren/bewoner/wachtlijst-parkeervergunning",
+  "https://www.utrecht.nl/wonen-en-leven/parkeren/gebruiksaanwijzing-parkeervergunning",
+  "https://loket.digitaal.utrecht.nl/nl/producten/omgevingsvergunning-aanvragen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/omgevingsvergunning-reageren",
+  "https://www.utrecht.nl/wonen-en-leven/bouwen-en-verbouwen/u-wilt-bouwen-of-verbouwen",
+  "https://www.utrecht.nl/wonen-en-leven/bouwen-en-verbouwen/omgevingswet",
+]
+
+[[source]]
+topic = "benefits"
+urls = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijstand-aanvragen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijzondere-bijstand-aanvragen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijstand-documenten-opsturen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijstand-wijzigingen-doorgeven",
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijstand-voorschot-aanvragen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/individuele-inkomenstoeslag-aanvragen",
+  "https://www.utrecht.nl/werk-en-inkomen/uitkeringen",
+  "https://www.utrecht.nl/werk-en-inkomen/uitkeringen/betaaldatums-uitkering",
+  "https://www.utrecht.nl/werk-en-inkomen/geld-en-hulp-bij-rondkomen",
+]
+
+[[source]]
+topic = "complaints"
+urls = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/klacht-over-de-gemeente-doorgeven",
+  "https://loket.digitaal.utrecht.nl/nl/producten/bezwaar-maken",
+  "https://loket.digitaal.utrecht.nl/nl/producten/meldingen",
+  "https://www.utrecht.nl/contact/melding-klacht-bezwaar",
+]
+
+[[source]]
+topic = "address_change"
+urls = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/verhuizing-doorgeven",
+  "https://loket.digitaal.utrecht.nl/nl/producten/inschrijven-vanuit-het-buitenland",
+  "https://loket.digitaal.utrecht.nl/nl/producten/briefadres-aanvragen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/onjuiste-inschrijving-op-uw-adres-melding-doen-adresonderzoek",
+]
+
+[[source]]
+topic = "other"
+urls = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/uittreksel-of-akte-aanvragen",
+]

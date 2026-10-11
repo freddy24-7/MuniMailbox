@@ -3,7 +3,7 @@
 <h1>Queue</h1>
 <p><form method="post" action="/intake/next"><button>Fetch next email from the feed</button></form></p>
 <table>
-  <thead><tr><th>Received</th><th>Subject (redacted)</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Received</th><th>Subject (redacted)</th><th>Topic</th><th>Urgency</th><th>Status</th><th></th></tr></thead>
   <tbody hx-get="/queue/rows" hx-trigger="every 3s" hx-swap="innerHTML">
     {% include "_queue_rows.html" %}
   </tbody>

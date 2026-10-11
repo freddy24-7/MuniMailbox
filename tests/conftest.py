@@ -23,6 +23,7 @@ os.environ["SESSION_SECRET"] = Fernet.generate_key().decode()
 os.environ["SPACY_MODEL"] = "nl_core_news_lg"
 os.environ["LOCAL_LLM_BASE_URL"] = "http://llm.invalid/v1"  # never called: tests use FakeLLM
 os.environ["LOCAL_LLM_MODEL"] = "not-a-real-model"
+os.environ["EMBEDDING_MODEL"] = "not-a-real-embedding-model"  # tests use FakeEmbedder
 
 from fastapi import FastAPI  # noqa: E402
 
@@ -34,7 +35,8 @@ from app.main import create_app  # noqa: E402
 from app.privacy.crypto import Cipher  # noqa: E402
 from app.privacy.engine import build_analyzer  # noqa: E402
 from app.privacy.redaction import Redactor  # noqa: E402
-from tests.helpers import FakeLLM  # noqa: E402
+from app.rag.store import InMemoryVectorStore  # noqa: E402
+from tests.helpers import FakeEmbedder, FakeLLM  # noqa: E402
 
 TEAM = "Team A"
 
@@ -52,6 +54,8 @@ def settings(database_url: str, tmp_path: Path) -> Settings:
         feed_path=tmp_path / "feed.jsonl",
         # SQLite allows one writer at a time; PostgreSQL runs the real concurrency.
         pipeline_workers=1 if database_url.startswith("sqlite") else 5,
+        parallel_agents=not database_url.startswith("sqlite"),
+        retry_backoff_seconds=0,
     )
 
 
@@ -97,11 +101,33 @@ def fake_llm() -> FakeLLM:
 
 
 @pytest.fixture
+def fake_embedder() -> FakeEmbedder:
+    return FakeEmbedder()
+
+
+@pytest.fixture
+def vector_store() -> InMemoryVectorStore:
+    """The knowledge base; empty unless a test puts documents in it."""
+    return InMemoryVectorStore()
+
+
+@pytest.fixture
 async def app(
-    settings: Settings, engine: AsyncEngine, fake_llm: FakeLLM, redactor: Redactor
+    settings: Settings,
+    engine: AsyncEngine,
+    fake_llm: FakeLLM,
+    fake_embedder: FakeEmbedder,
+    vector_store: InMemoryVectorStore,
+    redactor: Redactor,
 ) -> AsyncIterator[FastAPI]:
-    """The real app with its pipeline running; only the model is fake."""
-    app = create_app(settings, local_llm=fake_llm, redactor=redactor)
+    """The real app with its pipeline running; only the models and the vector store are fake."""
+    app = create_app(
+        settings,
+        local_llm=fake_llm,
+        embedder=fake_embedder,
+        vector_store=vector_store,
+        redactor=redactor,
+    )
     async with app.router.lifespan_context(app):
         yield app
 

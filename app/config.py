@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,9 +37,46 @@ class Settings(BaseSettings):
     local_llm_base_url: str
     local_llm_model: str
     local_llm_timeout_seconds: float = 180.0
+    # Calls to the local model server (chat and embeddings) that may run at the same time.
+    # 1 suits a laptop; raise it on a GPU server that batches requests (vLLM).
+    local_llm_max_concurrency: int = Field(default=1, ge=1)
+
+    # Cloud model, used only as a fallback and only with redacted text (FR-13, FR-14).
+    # Off unless explicitly enabled.
+    cloud_llm_enabled: bool = False
+    cloud_llm_base_url: str = ""
+    cloud_llm_model: str = ""
+    cloud_llm_api_key: SecretStr | None = None
+    cloud_llm_timeout_seconds: float = 60.0
+    # Requests whose email text is longer than this skip the local model.
+    cloud_route_min_chars: int = 6000
+
+    # Knowledge base (RAG). Embeddings are always computed locally.
+    embedding_model: str
+    chroma_host: str = "localhost"
+    chroma_port: int = 8001
+    chroma_collection: str = "municipal_documents"
+    chunk_max_chars: int = 1200
+    retrieval_top_k: int = 4
+    # Cosine similarity below which a chunk does not count as relevant. Depends on the
+    # embedding model: measured for bge-m3, where related text scores 0.65+ and unrelated ~0.5.
+    retrieval_min_similarity: float = 0.55
+
+    # A failed step is retried this many times before a human takes over (FR-3).
+    max_step_retries: int = 2
+    retry_backoff_seconds: float = 2.0
+    # Which team handles which topic. Topics not listed stay with the team that has them.
+    team_by_topic: dict[str, str] = {
+        "permits": "Vergunningen en Wonen",
+        "waste_collection": "Vergunningen en Wonen",
+        "address_change": "Vergunningen en Wonen",
+        "benefits": "Werk en Inkomen",
+    }
 
     feed_path: Path = Path("data/synthetic/emails.jsonl")
     pipeline_workers: int = 5
+    # Run independent agents at the same time. Off only for SQLite, which allows one writer.
+    parallel_agents: bool = True
 
 
 @lru_cache

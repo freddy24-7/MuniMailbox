@@ -1,6 +1,6 @@
 # Tamper-evident audit trail
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 2, 3 · **Requirements:** GR-7, GR-8, FR-23 · **Code:** `app/audit/`, `scripts/verify_audit.py`
+**Status:** Stage 3 notes added, questions open · **Stages:** 2, 3 · **Requirements:** GR-7, GR-8, FR-23 · **Code:** `app/audit/`, `scripts/verify_audit.py`
 
 ## In one sentence
 Every pipeline step and human action is written to a log that can only grow, and each
@@ -77,11 +77,46 @@ the answer?" Logging answers the first half; the hash chain answers the second.
 
 **Try it**
 - `uv run python scripts/verify_audit.py`
-- Tamper on purpose, then verify again:
-  `docker compose exec postgres psql -U munimailbox -c "UPDATE audit_events SET action='x' WHERE id=3"`
-  (Your chain stays broken afterwards. That is the point; to start clean, recreate the database.)
+- (The tamper exercise that stood here is replaced by the one under Stage 3: since
+  Stage 3 the database refuses the UPDATE.)
 
 **Not met yet (Stage 3)**
 - A database trigger that blocks updates and deletes for everyone but a superuser.
 - Deleting the *last* row is not detectable from the chain alone; that needs the latest
   hash anchored somewhere outside the database.
+
+### Stage 3 — 2026-10-10 (the database refuses too)
+
+**What was built**
+- A PostgreSQL trigger on `audit_events` that raises an error on any UPDATE, DELETE or
+  TRUNCATE. It is in the third migration and, as `AUDIT_APPEND_ONLY_SQL`, at the bottom
+  of [app/db/models.py](../app/db/models.py).
+
+**Three layers now**
+| Layer | Stops | Does not stop |
+| --- | --- | --- |
+| ORM guard (Stage 2) | application code going through SQLAlchemy | raw SQL |
+| Database trigger (Stage 3) | any SQL from any client | someone who may disable triggers |
+| Hash chain (Stage 2) | nothing — it *reveals* | rewriting the whole chain |
+
+Prevention and detection are different jobs. The first two layers prevent; the chain is
+for when prevention failed.
+
+**Decisions and why**
+- Autogenerate does not see triggers, so the SQL is written by hand in the migration.
+  The copy in `models.py` exists so that the tests, which build tables without
+  migrations, get the trigger as well.
+- The tamper tests now do what a real attacker with full rights would have to do:
+  `ALTER TABLE audit_events DISABLE TRIGGER USER`, change a row, enable it again.
+  The chain still catches it.
+
+**Try it**
+- Blocked: `docker compose exec postgres psql -U munimailbox -c "UPDATE audit_events SET action='x' WHERE id=3"`
+  → `ERROR: audit_events is append-only`.
+- To see the chain break you must switch the trigger off first, as the tests do. Your
+  chain then stays broken; recreate the database to start clean.
+
+**Still open**
+- The app connects as the database owner, who *can* disable the trigger. A separate,
+  less privileged database user for the app closes that (Stage 6).
+- The latest hash is not anchored outside the database.

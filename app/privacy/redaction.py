@@ -122,15 +122,29 @@ class Redactor:
         return spans_per_text
 
     def redact(
-        self, texts: Sequence[str], known_values: Sequence[KnownValue] = ()
+        self,
+        texts: Sequence[str],
+        known_values: Sequence[KnownValue] = (),
+        existing: Sequence[MappingEntry] = (),
     ) -> RedactionResult:
         """Redact several fields of one email with one shared mapping, so `[PERSON_1]`
         means the same person in the subject and in the body.
 
+        The returned mapping includes the `existing` entries.
+
         Synchronous and CPU-bound: call it through `asyncio.to_thread`.
         """
-        placeholders: dict[tuple[EntityType, str], str] = {}
+        # `existing` continues an email's mapping for text that joins it later (case
+        # history): known values keep their placeholder, new ones get the next number.
+        placeholders = {(entry.entity_type, entry.value): entry.placeholder for entry in existing}
         counters: dict[EntityType, int] = {}
+        for entry in existing:
+            number = int(entry.placeholder.rstrip("]").rsplit("_", 1)[1])
+            counters[entry.entity_type] = max(counters.get(entry.entity_type, 0), number)
+        known_values = [
+            *known_values,
+            *(KnownValue(entry.entity_type, entry.value) for entry in existing),
+        ]
         redacted: list[RedactedText] = []
         for text, spans in zip(texts, self.detect(texts, known_values), strict=True):
             parts: list[str] = []

@@ -1,6 +1,6 @@
 # PII detection and redaction
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 2, 3 · **Requirements:** FR-5, GR-1, GR-4 · **Code:** `app/privacy/`, `app/agents/privacy.py`
+**Status:** Stage 3 notes added, questions open · **Stages:** 2, 3 · **Requirements:** FR-5, GR-1, GR-4 · **Code:** `app/privacy/`, `app/agents/privacy.py`
 
 ## In one sentence
 Before any model sees an email, every piece of personal data is found and swapped for a
@@ -89,3 +89,63 @@ cloud model. Redaction is the first pipeline step and the precondition for every
 **Not met yet (Stage 3)**
 - Street-address and Dutch phone recognizers; the labelled test set and the recall gate in CI.
 - Using what the municipality already knows about the sender (name, address) as extra detection.
+
+### Stage 3 — 2026-10-10
+
+**What was built**
+- [app/privacy/recognizers.py](../app/privacy/recognizers.py): three new recognizers —
+  street address, Dutch phone formats, the name under a closing formula — and a BSN
+  recognizer that accepts `1234.56.789`.
+- [app/privacy/hints.py](../app/privacy/hints.py): `known_values_for(citizen)` turns the
+  sender's citizen record into values that are redacted wherever they occur.
+- [app/privacy/redaction.py](../app/privacy/redaction.py): `detect()` now combines three
+  sources (known values, recognizers, propagation) and **merges** overlapping detections.
+- [tests/pii_testset/](../tests/pii_testset/): the labelled test set and the recall gate.
+
+**Three ways a recognizer decides**
+- *Pattern + checksum* (BSN, IBAN): the shape narrows it down, the checksum confirms it.
+  Near-certain.
+- *Pattern + context word*: "Kerkbuurt 12" has the same shape as "Artikel 12". The loose
+  pattern scores 0.2, below the 0.4 threshold; a word like "adres" or "woon" nearby adds
+  to the score and lifts it over.
+- *Position*: the line under "Met vriendelijke groet," is a name, whatever it says. NER
+  fails here because a lone name has no sentence around it.
+
+**Decisions and why**
+- **Merge, do not choose.** When detections overlapped, the most confident used to win.
+  NER found "Kerkstraat" (0.85) and beat the pattern that had found "Kerkstraat 12"
+  (0.75), so the house number stayed visible. Now overlapping detections become one span
+  covering all of them. This single change took address recall from 81% to 100%.
+- **Known values.** The municipality already knows who the sender is. Their name, BSN,
+  address, phone and email are redacted by exact match, case-insensitively, also as
+  first name or family name alone. Certain, where recognizers only guess.
+- **Two gates, not one.** Known values only help for the sender. A partner or neighbour
+  mentioned in the email is protected by the recognizers alone, so that group is
+  measured and gated separately.
+- Strict counting: a value counts as found only if it is redacted completely.
+
+**Seen in practice** (330 emails, 1,260 labelled values)
+
+| | Stage 2 baseline | Stage 3 |
+| --- | --- | --- |
+| Street addresses | 5 of 94 | 210 of 210 |
+| Phone numbers | 47 of 64 | 150 of 150 |
+| Names, recognizers alone | 121 of 168 | 416 of 435 |
+| Whole pipeline | — | 99.8% |
+| Other people's values | — | 98.6% |
+
+- Remaining misses are all names: lowercase names without a closing formula, and a
+  family name that is also a verb ("Moet").
+- Presidio looks up its own recognizers by class name: a class called `PhoneRecognizer`
+  collided with the built-in one. Ours are named `Dutch...`.
+- **These numbers flatter.** The emails come from 22 templates written by the same hand
+  that tuned the recognizers. Real mail would score lower.
+
+**Try it**
+- `uv run pytest tests/pii_testset -s` prints both tables and every miss.
+- Add a template to [hard_cases.py](../tests/pii_testset/hard_cases.py) that you think
+  will slip through, run the gate, and see whether it does.
+
+**Still open**
+- Cities are redacted only when NER spots them, and are not labelled in the test set.
+- Precision is tested with a handful of sentences, not measured.

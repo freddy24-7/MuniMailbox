@@ -85,7 +85,7 @@ async def logout(_: Annotated[User, Depends(current_user)]) -> RedirectResponse:
 async def _queue_context(session: AsyncSession, user: User) -> dict[str, object]:
     emails = (
         await session.scalars(
-            select(Email).where(visible_emails(user)).order_by(Email.received_at.desc())
+            select(Email).where(visible_emails(user)).order_by(Email.ingested_at.desc())
         )
     ).all()
     return {"emails": emails, "user": user}
@@ -144,6 +144,14 @@ async def email_detail(
         (draft_restored,) = await restore(
             session, cipher, user=user, email=email, texts=[draft.text_redacted]
         )
+    case_context = email.case_context or []
+    case_summaries = await restore(
+        session,
+        cipher,
+        user=user,
+        email=email,
+        texts=[case["summary_redacted"] for case in case_context],
+    )
     sent = await session.scalar(select(OutboxMessage).where(OutboxMessage.email_id == email.id))
 
     # Seeing personal data is itself an audited action (GR-7).
@@ -161,6 +169,10 @@ async def email_detail(
             "original": read_original(cipher, user=user, email=email),
             "draft": draft,
             "draft_restored": draft_restored,
+            "cases": [
+                {**case, "summary": summary}
+                for case, summary in zip(case_context, case_summaries, strict=True)
+            ],
             "sent": json.loads(cipher.decrypt(sent.payload_encrypted)) if sent else None,
             "can_approve": has_permission(user.role, Permission.DRAFT_APPROVE),
         },

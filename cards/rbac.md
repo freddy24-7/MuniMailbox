@@ -1,6 +1,6 @@
 # Role-based access control (RBAC)
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 3, 5 · **Requirements:** GR-5, GR-6 · **Code:** `app/auth/`, `app/api/`
+**Status:** Stage 3 notes added, questions open · **Stages:** 3, 5 · **Requirements:** GR-5, GR-6 · **Code:** `app/auth/`, `app/api/`
 
 ## In one sentence
 What a user may do and see is decided by their role, the mapping from roles to
@@ -70,3 +70,43 @@ view another team's emails.
 **Not met yet (Stage 3)**
 - Object-level checks: today every caseworker and team lead sees **every** email.
   "Is this email assigned to me or my team?" is not asked anywhere yet (GR-6).
+
+### Stage 3 — 2026-10-10 (object-level access)
+
+**What was built**
+- [app/auth/scope.py](../app/auth/scope.py): the one place that answers "may this user
+  touch *this* email?". The same rule exists twice in that file: `can_access_email()`
+  for one email, `visible_emails()` as a query filter for lists.
+- `Email.team`, set when the email is ingested.
+
+**The rule**
+| Role | Sees an email when |
+| --- | --- |
+| Caseworker | it is in their team, or assigned to them personally |
+| Team lead | it is in their team, or has no team yet (theirs to route) |
+| Auditor | never (they see the audit log instead) |
+
+**Decisions and why**
+- Two questions, two modules. `permissions.py`: may this role approve drafts *at all*?
+  `scope.py`: may this user approve *this* draft? Checking only the first is the classic
+  IDOR bug — change the ID in the URL and read someone else's data.
+- Checked in four places: the queue query, the detail page, `approve_draft()` and
+  `restore()`. The last two are services, so a future endpoint cannot forget it.
+- **404, not 403**, for an email outside your team. A 403 would confirm that an email
+  with that ID exists.
+- "No team" never matches "no team": an auditor (team = none) does not get access to an
+  unrouted email (team = none). There is a test for exactly that.
+
+**Seen in practice**
+- The test user for this is a caseworker with every permission, in another team. Only
+  the scope differs, so only the scope can be what stops them.
+- The two emails ingested before this stage have no team and vanished from caseworker
+  queues. Team leads still see them.
+
+**Try it**
+- Log in as a caseworker of one team, open an email, copy the URL. Log in as a
+  caseworker of the other team and paste it.
+
+**Still open**
+- Until the intake agent routes by topic (Stage 4), an email belongs to the team of
+  whoever fetched it. Reassigning is Stage 5.

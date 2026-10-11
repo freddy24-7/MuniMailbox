@@ -2,9 +2,14 @@
 <tr>
   <td>{{ email.received_at.strftime("%d-%m-%Y %H:%M") }}</td>
   <td>{{ email.subject_redacted if email.subject_redacted is not none else "(not redacted yet)" }}</td>
+  <td>{{ email.topic.value.replace("_", " ") if email.topic else "—" }}</td>
+  <td>
+    {% if email.urgency %}<span class="badge urgency-{{ email.urgency.value }}">{{ email.urgency.value }}</span>{% else %}—{% endif %}
+    {% if email.sensitive %}<span class="badge sensitive">sensitive</span>{% endif %}
+  </td>
   <td><span class="badge {{ email.status.value }}">{{ email.status.value.replace("_", " ") }}</span></td>
   <td><a href="/emails/{{ email.id }}">Open</a></td>
 </tr>
 {% else %}
-<tr><td colspan="4" class="muted">No emails yet.</td></tr>
+<tr><td colspan="6" class="muted">No emails yet.</td></tr>
 {% endfor %}

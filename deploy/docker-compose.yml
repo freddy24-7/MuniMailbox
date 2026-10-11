@@ -1,4 +1,4 @@
-# Local stack. Services are added stage by stage; for now only the database.
+# Local stack. Services are added stage by stage.
 name: munimailbox
 
 services:
@@ -19,5 +19,15 @@ services:
       timeout: 3s
       retries: 10
 
+  chroma:
+    # Same version as the chromadb-client package in pyproject.toml.
+    image: chromadb/chroma:1.5.9
+    ports:
+      # Localhost only, like the database (GR-11). 8001 because the app uses 8000.
+      - "127.0.0.1:${CHROMA_PORT:-8001}:8000"
+    volumes:
+      - chroma_data:/data
+
 volumes:
   postgres_data:
+  chroma_data:

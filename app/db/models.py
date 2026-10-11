@@ -138,6 +138,11 @@ class Email(Base):
     # Null until the intake agent has run.
     topic: Mapped[Topic | None] = mapped_column(_enum(Topic))
     urgency: Mapped[Urgency | None] = mapped_column(_enum(Urgency))
+    # Threats or signs of distress (FR-6).
+    sensitive: Mapped[bool | None] = mapped_column()
+    # What the policy and case agents found, for the drafting agent. Placeholders only.
+    policy_context: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    case_context: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     status: Mapped[EmailStatus] = mapped_column(
         _enum(EmailStatus), default=EmailStatus.RECEIVED, index=True
     )

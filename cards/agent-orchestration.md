@@ -1,6 +1,6 @@
 # Multi-agent orchestration
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 2, 4 · **Requirements:** FR-2, FR-3, FR-4, FR-6–FR-11 · **Code:** `app/agents/`, `app/orchestrator/`
+**Status:** Stage 4 notes added, questions open · **Stages:** 2, 4 · **Requirements:** FR-2, FR-3, FR-4, FR-6–FR-11 · **Code:** `app/agents/`, `app/orchestrator/`
 
 ## In one sentence
 Six small, single-purpose agents each do one job on an email, and an orchestrator decides
@@ -87,3 +87,68 @@ Each agent records a duration histogram and a failure counter.
 **Not met yet (Stage 4)**
 - Intake, policy, case and quality agents; policy ‖ case in parallel; retries with a limit.
 - Per-agent Prometheus histogram and failure counter (Stage 6); for now a log line with `duration_ms`.
+
+### Stage 4 — 2026-10-11 (all six agents, in parallel, with retries)
+
+**What was built**
+- Four new agents: [intake](../app/agents/intake.py), [policy](../app/agents/policy.py),
+  [case](../app/agents/case.py) and [quality](../app/agents/quality.py).
+- [app/orchestrator/workflow.py](../app/orchestrator/workflow.py) now takes **steps**
+  instead of agents. A step is one agent, or a tuple of agents that run together:
+
+  ```python
+  steps=[
+      PrivacyAgent(...),
+      IntakeAgent(...),
+      (PolicyAgent(...), CaseAgent(...)),   # at the same time
+      DraftingAgent(...),
+      QualityAgent(...),
+  ]
+  ```
+- Three new columns on `Email` carry results from one agent to the next: `sensitive`,
+  `policy_context` and `case_context`.
+
+**Decisions and why**
+- **Fan-out / fan-in with `asyncio.gather`.** Policy and case each get their own database
+  transaction and their own retries. The step is complete when both are; then one event,
+  `policy+case.completed`, triggers drafting.
+- **Agents pass results through the database, not to each other.** The drafting agent
+  reads `email.policy_context`; it does not know a policy agent exists. That is what
+  keeps agents stateless and re-runnable.
+- **Retries with backoff.** A failed agent is tried again up to `MAX_STEP_RETRIES` (2)
+  times, waiting 2 s and then 4 s. Each retry writes a `*.retried` audit event. After
+  the last one: `*.failed` and status "needs attention".
+- **A refusal is not retried.** `UnredactedInputError` is deterministic: the same input
+  would be refused again, so it fails at once with `inference.refused`.
+- **The intake agent routes.** `TEAM_BY_TOPIC` maps a topic to a team. A topic that is
+  not in the map leaves the email with the team that has it, for a team lead to route.
+- **The case agent finds the sender by `Email.citizen_id`**, set from the sender's address
+  when the email arrived. The redacted text no longer says who wrote it.
+- **Case summaries are redacted with the email's own mapping** before they are stored.
+  They are free text from the case system and can name anyone. The sender keeps the
+  placeholder they already have in the email; a new person gets the next number.
+- **Parallel can be switched off** (`PARALLEL_AGENTS`). SQLite allows one writer at a
+  time, so tests on SQLite run the two agents one after the other.
+
+**Seen in practice**
+- Audit trail of one email now: `email.received` → `privacy.completed` →
+  `inference.completed` → `intake.completed` → `case.completed` → `policy.completed` →
+  `inference.completed` → `drafting.completed` → `inference.completed` → `quality.completed`.
+  Case and policy can appear in either order.
+- A real run with the small model `gemma3:1b` took 18.5 s. The quality agent failed three
+  times on invalid output (`quality.retried`, `quality.retried`, `quality.failed`) and
+  the email went to "needs attention" — FR-3 working as designed, on a real failure.
+- That same run exposed a design choice worth questioning: a draft existed, and the
+  failed *check* of it still sent the whole email to "needs attention".
+- A run that was killed halfway left an email in "processing" for good. The event that
+  would have continued it lived only in memory.
+
+**Try it**
+- `uv run pytest tests/integration/test_agents.py tests/integration/test_pipeline.py -v`
+- In `services.py`, move `IntakeAgent` above `PrivacyAgent`, run the tests, read which
+  one fails and why. Undo.
+
+**Still open**
+- No recovery for emails stuck in "processing" after a crash (Stage 5, Redis Streams).
+- Should a failing quality check discard a usable draft, or attach a "not checked" warning?
+- Per-agent Prometheus metrics (Stage 6).

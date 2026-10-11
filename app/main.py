@@ -9,10 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from app.api import health
 from app.auth.dependencies import NotAuthenticatedError
 from app.config import Settings, get_settings
-from app.inference.clients import ChatClient
+from app.inference.clients import ChatClient, EmbeddingClient
 from app.observability.correlation import CorrelationIdMiddleware
 from app.observability.logging import configure_logging
 from app.privacy.redaction import Redactor
+from app.rag.store import VectorStore
 from app.services import build_services
 from app.web import routes as web
 
@@ -23,14 +24,24 @@ def create_app(
     settings: Settings | None = None,
     *,
     local_llm: ChatClient | None = None,
+    cloud_llm: ChatClient | None = None,
+    embedder: EmbeddingClient | None = None,
     redactor: Redactor | None = None,
+    vector_store: VectorStore | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level, settings.log_format)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.services = await build_services(settings, local_llm=local_llm, redactor=redactor)
+        app.state.services = await build_services(
+            settings,
+            local_llm=local_llm,
+            cloud_llm=cloud_llm,
+            embedder=embedder,
+            redactor=redactor,
+            vector_store=vector_store,
+        )
         yield
         await app.state.services.aclose()
 

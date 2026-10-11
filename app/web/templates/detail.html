@@ -2,44 +2,93 @@
 {% block content %}
 <p><a href="/queue">← Queue</a></p>
 <h1>{{ original.subject if original else email.subject_redacted }} <span class="badge {{ email.status.value }}">{{ email.status.value.replace("_", " ") }}</span></h1>
+<p class="muted">
+  Topic: {{ email.topic.value.replace("_", " ") if email.topic else "not classified" }}
+  · Urgency: {{ email.urgency.value if email.urgency else "—" }}
+  {% if email.sensitive %}· <span class="badge sensitive">sensitive content</span>{% endif %}
+  · Team: {{ email.team or "not routed" }}
+</p>
 
 {% if sent %}<div class="notice">Approved and written to the outbox for {{ sent.to }}.</div>{% endif %}
 {% if email.status.value == "needs_attention" %}<div class="notice bad">Automatic processing failed. This email needs manual handling.</div>{% endif %}
 
 <div class="cols">
-  <section class="panel">
-    {% if original %}
-      <h2>Email from {{ original.sender }}</h2>
-      <pre class="text">{{ original.body }}</pre>
-    {% else %}
-      <h2>Email</h2>
-      <p class="muted">The original and its personal data were deleted after the retention period. Only the redacted text remains.</p>
-      <pre class="text">{{ email.body_redacted }}</pre>
-    {% endif %}
-    {% if email.attachments %}<p class="muted">Attachments: {{ email.attachments | join(", ") }}</p>{% endif %}
-    <details>
-      <summary>What the model saw</summary>
-      <p class="muted">Subject: {{ email.subject_redacted }}</p>
-      <pre class="text">{{ email.body_redacted }}</pre>
-    </details>
-  </section>
-
-  <section class="panel">
-    <h2>Draft reply{% if draft %} · {{ draft.model_used }}{% endif %}</h2>
-    {% if draft %}
-      <pre class="text">{{ draft_restored }}</pre>
-      <details>
-        <summary>As stored (placeholders)</summary>
-        <pre class="text">{{ draft.text_redacted }}</pre>
-      </details>
-      {% if can_approve and original and email.status.value == "draft_ready" %}
-        <p><form method="post" action="/drafts/{{ draft.id }}/approve"><button>Approve and send</button></form></p>
-      {% elif email.status.value == "draft_ready" %}
-        <p class="muted">Only a caseworker can approve a draft.</p>
+  <div>
+    <section class="panel">
+      {% if original %}
+        <h2>Email from {{ original.sender }}</h2>
+        <pre class="text">{{ original.body }}</pre>
+      {% else %}
+        <h2>Email</h2>
+        <p class="muted">The original and its personal data were deleted after the retention period. Only the redacted text remains.</p>
+        <pre class="text">{{ email.body_redacted }}</pre>
       {% endif %}
-    {% else %}
-      <p class="muted">No draft yet.</p>
-    {% endif %}
-  </section>
+      {% if email.attachments %}<p class="muted">Attachments: {{ email.attachments | join(", ") }}</p>{% endif %}
+      <details>
+        <summary>What the model saw</summary>
+        <p class="muted">Subject: {{ email.subject_redacted }}</p>
+        <pre class="text">{{ email.body_redacted }}</pre>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>Earlier contact</h2>
+      {% if cases %}
+        <ul class="plain">
+          {% for case in cases %}
+            <li>{{ case.opened }} · {{ case.topic.replace("_", " ") }} · {{ case.status }}: {{ case.summary }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No earlier cases known for this sender.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <div>
+    <section class="panel">
+      <h2>Draft reply{% if draft %} · {{ draft.model_used }}{% endif %}</h2>
+      {% if draft %}
+        {% for warning in draft.warnings %}
+          <p class="warning">{{ warning.message }} <span class="muted">({{ warning.type.replace("_", " ") }}, by {{ warning.origin }})</span></p>
+        {% endfor %}
+        <pre class="text">{{ draft_restored }}</pre>
+        <details>
+          <summary>As stored (placeholders)</summary>
+          <pre class="text">{{ draft.text_redacted }}</pre>
+        </details>
+        {% if can_approve and original and email.status.value == "draft_ready" %}
+          <p><form method="post" action="/drafts/{{ draft.id }}/approve"><button>Approve and send</button></form></p>
+        {% elif email.status.value == "draft_ready" %}
+          <p class="muted">Only a caseworker can approve a draft.</p>
+        {% endif %}
+      {% else %}
+        <p class="muted">No draft yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>Sources used in the draft</h2>
+      {% if draft and draft.sources %}
+        <ul class="plain">
+          {% for source in draft.sources %}
+            <li><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title }}{% if source.heading and source.heading != source.title %} — {{ source.heading }}{% endif %}</a> <span class="muted">(fetched {{ source.fetched_at }})</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">None.</p>
+      {% endif %}
+      {% if email.policy_context %}
+        <details>
+          <summary>All {{ email.policy_context | length }} passages the model was given</summary>
+          {% for source in email.policy_context %}
+            <p class="muted">[{{ source.id }}] semantic rank {{ source.semantic_rank or "—" }}, keyword rank {{ source.keyword_rank or "—" }} · <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.url }}</a></p>
+            <pre class="text">{{ source.text }}</pre>
+          {% endfor %}
+        </details>
+      {% endif %}
+      <p class="muted">The knowledge base holds public pages of the municipality of Utrecht, used as a stand-in for this demo's fictional municipality.</p>
+    </section>
+  </div>
 </div>
 {% endblock %}
