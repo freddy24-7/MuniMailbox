@@ -1,13 +1,14 @@
 import json
 import uuid
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import writer as audit
@@ -15,7 +16,18 @@ from app.auth.dependencies import current_user, require
 from app.auth.permissions import Permission, PermissionDeniedError, has_permission
 from app.auth.scope import can_access_email, visible_emails
 from app.auth.session import SESSION_COOKIE
-from app.db.models import AuditEvent, Draft, Email, OutboxMessage, Review, Role, User
+from app.db.models import (
+    AuditEvent,
+    Draft,
+    Email,
+    EmailStatus,
+    OutboxMessage,
+    Review,
+    Role,
+    Topic,
+    Urgency,
+    User,
+)
 from app.db.session import get_session
 from app.orchestrator.ingestion import ingest_next_from_feed
 from app.privacy.restore import read_original, restore
@@ -28,6 +40,7 @@ from app.review.service import (
     reassign_email,
     reject_draft,
 )
+from app.review.stats import team_stats
 from app.services import Services
 
 router = APIRouter(include_in_schema=False)
@@ -46,6 +59,21 @@ async def _form(request: Request) -> dict[str, str]:
     """The fields of a plain HTML form (application/x-www-form-urlencoded)."""
     fields = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
     return {name: values[-1] for name, values in fields.items()}
+
+
+def _navigation(user: User | None) -> list[tuple[str, str]]:
+    """The pages this user's role can open, for the links in the header."""
+    pages = (
+        ("Queue", "/queue", Permission.QUEUE_VIEW),
+        ("Dashboard", "/dashboard", Permission.DASHBOARD_VIEW),
+        ("Audit log", "/audit", Permission.AUDIT_VIEW),
+    )
+    if user is None:
+        return []
+    return [(label, url) for label, url, needed in pages if has_permission(user.role, needed)]
+
+
+templates.env.globals["navigation"] = _navigation
 
 
 def _home_for(user: User) -> str:
@@ -97,29 +125,80 @@ async def logout(_: Annotated[User, Depends(current_user)]) -> RedirectResponse:
 # --- Queue ---
 
 
-async def _queue_context(session: AsyncSession, user: User) -> dict[str, object]:
-    emails = (
-        await session.scalars(
-            select(Email).where(visible_emails(user)).order_by(Email.ingested_at.desc())
-        )
-    ).all()
-    return {"emails": emails, "user": user}
+# Most urgent first (FR-18). An email that is not classified yet counts as normal.
+_URGENCY_RANK = case((Email.urgency == Urgency.HIGH, 0), (Email.urgency == Urgency.LOW, 2), else_=1)
+
+
+def _choice[E: StrEnum](enum_class: type[E], value: str) -> E | None:
+    """A filter from the query string: empty means "all", anything unknown is an error."""
+    if not value:
+        return None
+    try:
+        return enum_class(value)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY) from error
+
+
+async def _queue_context(
+    session: AsyncSession, user: User, topic: str, email_status: str
+) -> dict[str, object]:
+    chosen_topic, chosen_status = _choice(Topic, topic), _choice(EmailStatus, email_status)
+    query = select(Email).where(visible_emails(user))
+    if chosen_topic is not None:
+        query = query.where(Email.topic == chosen_topic)
+    if chosen_status is not None:
+        query = query.where(Email.status == chosen_status)
+    # Within one urgency the oldest comes first: it has waited longest.
+    emails = (await session.scalars(query.order_by(_URGENCY_RANK, Email.received_at))).all()
+    return {
+        "emails": emails,
+        "user": user,
+        "topics": list(Topic),
+        "statuses": list(EmailStatus),
+        "topic": chosen_topic,
+        "status": chosen_status,
+        "filters": urlencode({"topic": topic, "status": email_status}),
+    }
 
 
 @router.get("/queue", response_class=HTMLResponse)
 async def queue(
-    request: Request, session: Db, user: Annotated[User, Depends(require(Permission.QUEUE_VIEW))]
+    request: Request,
+    session: Db,
+    user: Annotated[User, Depends(require(Permission.QUEUE_VIEW))],
+    topic: str = "",
+    status: Annotated[str, Query(alias="status")] = "",
 ) -> HTMLResponse:
-    return templates.TemplateResponse(request, "queue.html", await _queue_context(session, user))
+    return templates.TemplateResponse(
+        request, "queue.html", await _queue_context(session, user, topic, status)
+    )
 
 
 @router.get("/queue/rows", response_class=HTMLResponse)
 async def queue_rows(
-    request: Request, session: Db, user: Annotated[User, Depends(require(Permission.QUEUE_VIEW))]
+    request: Request,
+    session: Db,
+    user: Annotated[User, Depends(require(Permission.QUEUE_VIEW))],
+    topic: str = "",
+    status: Annotated[str, Query(alias="status")] = "",
 ) -> HTMLResponse:
     """The table body only; HTMX polls this so statuses update without a reload."""
     return templates.TemplateResponse(
-        request, "_queue_rows.html", await _queue_context(session, user)
+        request, "_queue_rows.html", await _queue_context(session, user, topic, status)
+    )
+
+
+# --- Team dashboard ---
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(
+    request: Request,
+    session: Db,
+    user: Annotated[User, Depends(require(Permission.DASHBOARD_VIEW))],
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "dashboard.html", {"user": user, "stats": await team_stats(session, user)}
     )
 
 
@@ -330,13 +409,39 @@ async def reassign(
 
 @router.get("/audit", response_class=HTMLResponse)
 async def audit_log(
-    request: Request, session: Db, user: Annotated[User, Depends(require(Permission.AUDIT_VIEW))]
+    request: Request,
+    session: Db,
+    user: Annotated[User, Depends(require(Permission.AUDIT_VIEW))],
+    email: str = "",
+    actor: str = "",
+    action: str = "",
 ) -> HTMLResponse:
-    events = (
-        await session.scalars(select(AuditEvent).order_by(AuditEvent.id.desc()).limit(200))
-    ).all()
+    """The audit log, searchable per email, per actor and per kind of action (FR-23)."""
+    query = select(AuditEvent)
+    if email:
+        try:
+            query = query.where(AuditEvent.email_id == uuid.UUID(email.strip()))
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY) from error
+    if actor:
+        query = query.where(AuditEvent.actor == actor)
+    if action:
+        query = query.where(AuditEvent.action.startswith(action.strip(), autoescape=True))
+    events = (await session.scalars(query.order_by(AuditEvent.id.desc()).limit(200))).all()
+    staff = (await session.scalars(select(User).order_by(User.name))).all()
     return templates.TemplateResponse(
         request,
         "audit.html",
-        {"user": user, "events": events, "chain": await audit.verify_chain(session)},
+        {
+            "user": user,
+            "events": events,
+            # Always the whole chain: a filtered view must not hide a broken link.
+            "chain": await audit.verify_chain(session),
+            "staff": staff,
+            "names": {f"user:{person.id}": person.name for person in staff},
+            "email": email,
+            "actor": actor,
+            "action": action,
+            "filtered": bool(email or actor or action),
+        },
     )

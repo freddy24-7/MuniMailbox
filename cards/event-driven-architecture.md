@@ -1,6 +1,6 @@
 # Events and the event bus
 
-**Status:** Stage 2 notes added, questions open · **Stages:** 2, 5 · **Requirements:** FR-1, FR-2 · **Code:** `app/events/`
+**Status:** Stage 5 notes added, questions open · **Stages:** 2, 5 · **Requirements:** FR-1, FR-2 · **Code:** `app/events/`
 
 ## In one sentence
 Components announce what happened ("email received", "redaction completed") instead of
@@ -73,3 +73,51 @@ without redoing the ones before it.
 - Redis Streams, consumer groups, acknowledgements, redelivery after a crash.
 - Idempotency is only partly there: the privacy agent skips an email that already has a
   redaction record, the drafting agent would write a second draft.
+
+### Stage 5 — 2026-10-11 (Redis Streams)
+
+**What was built**
+- [app/events/redis_bus.py](../app/events/redis_bus.py): `RedisStreamsEventBus`, behind
+  the same interface as the in-memory bus. `EVENT_BUS=redis` switches to it; `memory`
+  still works with nothing running.
+- A Redis container in `deploy/docker-compose.yml` (about 17 MB of memory in use).
+- The orchestrator became safe against receiving an event twice.
+
+**How it works**
+- **Stream** — an append-only log in Redis. `publish` is one `XADD`.
+- **Consumer group** — hands each entry to one worker, and keeps a list of entries that
+  were handed out and not yet acknowledged (the "pending" list).
+- **Acknowledge after the work** — a worker sends `XACK` only when the handler has
+  returned. If the process dies first, the entry stays pending.
+- **Claim what was abandoned** — before reading new entries, a worker asks for pending
+  entries that have been idle too long (`XAUTOCLAIM`) and handles those.
+- **Give up eventually** — an entry delivered more than three times is dropped and
+  logged, so one event that crashes its worker cannot block the stream for ever.
+
+**Decisions and why**
+- **At least once, not exactly once.** Redis can promise an event is not lost; it cannot
+  promise it is delivered only once. So the receiving side has to cope: before running
+  an agent, the orchestrator looks for that agent's `*.completed` audit event. If it is
+  there, the work is skipped and the workflow continues from that point.
+- **That same check closes the crash window.** A step is saved, the process dies before
+  the next event is published. On restart the unacknowledged event comes again, the
+  step is recognised as done, and the next event is published this time.
+- **Events still carry identifiers only.** Nothing personal is stored in Redis.
+- **The takeover time must be longer than the slowest step** (`REDIS_CLAIM_IDLE_SECONDS`,
+  10 minutes). A test with a takeover time of zero showed why: a second worker took the
+  event from the first while it was still busy, and it was handled twice.
+
+**Seen in practice**
+- The "Try it" from Stage 2 now ends differently: an event that was being handled when
+  the bus stopped is handled by the next one that starts
+  (`test_an_event_that_was_being_handled_when_the_app_died_is_handled_after_restart`).
+- The Redis tests need a real Redis and are skipped without `TEST_REDIS_URL`. CI has one;
+  locally they were run against the container.
+
+**Still open**
+- Recovery waits for the takeover time: after a crash, an email continues up to 10
+  minutes later, not at once.
+- The check "already completed?" and the agent's work are not one atomic step. Two
+  workers handling the same event at the same moment could both run it; the takeover
+  time is what makes that unlikely.
+- A dropped event is only a log line. Nothing marks the email "needs attention" yet.

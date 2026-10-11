@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Team dashboard{% if user.team %} · {{ user.team }}{% endif %}</h1>
+<p class="muted">Counts and durations only. No email text or personal data is used for these numbers.</p>
+<div class="cols">
+  <section class="panel">
+    <h2>Volume per topic</h2>
+    <table class="numbers">
+      {% for topic, count in stats.by_topic.items() %}
+      <tr><td>{{ topic.replace("_", " ") }}</td><td>{{ count }}</td></tr>
+      {% else %}
+      <tr><td class="muted">No emails yet.</td><td></td></tr>
+      {% endfor %}
+      <tr><th>Total</th><th>{{ stats.total }}</th></tr>
+    </table>
+  </section>
+  <section class="panel">
+    <h2>Status</h2>
+    <table class="numbers">
+      {% for status, count in stats.by_status.items() %}
+      <tr><td>{{ status.replace("_", " ") }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </table>
+    <h2>Handling</h2>
+    <table class="numbers">
+      <tr><td>Handled (approved or rejected)</td><td>{{ stats.handled }}</td></tr>
+      <tr><td>Average handling time</td><td>{% if stats.average_handling_time is not none %}{{ (stats.average_handling_time.total_seconds() / 60) | round(1) }} min{% else %}—{% endif %}</td></tr>
+      <tr><td>Approved without changes</td><td>{% if stats.approved_unchanged_share is not none %}{{ (stats.approved_unchanged_share * 100) | round | int }}% of {{ stats.approved }}{% else %}—{% endif %}</td></tr>
+    </table>
+  </section>
+</div>
+{% endblock %}

@@ -32,10 +32,14 @@ class EventBus(Protocol):
 
     async def stop(self) -> None: ...
 
+    async def join(self) -> None:
+        """Wait until every published event, and every event those caused, is handled."""
+        ...
+
 
 class InMemoryEventBus:
-    """In-process queue for tests and the first slice. Events are lost if the process
-    stops; Redis Streams replaces this behind the same interface."""
+    """In-process queue, for tests and for running without Redis. Events are lost if the
+    process stops; `RedisStreamsEventBus` keeps them, behind the same interface."""
 
     def __init__(self, workers: int = 5) -> None:
         self._queue: asyncio.Queue[Event] = asyncio.Queue()

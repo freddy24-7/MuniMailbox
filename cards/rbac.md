@@ -122,3 +122,6 @@ view another team's emails.
 - Reassignment is the first action that *changes* scope. After it, the old team's
   access is gone immediately, because scope is computed from the email on every request
   and stored nowhere else.
+- `dashboard:view` is the first permission only team leads have. The header shows a link
+  only when the role has the permission, but the endpoint checks it again: a hidden link
+  is a convenience, not access control.

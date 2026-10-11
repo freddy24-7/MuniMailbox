@@ -75,6 +75,15 @@ class Settings(BaseSettings):
         "benefits": "Werk en Inkomen",
     }
 
+    # Where events travel. "memory" needs nothing but loses events when the app stops;
+    # "redis" (Redis Streams) keeps them and redelivers what was not finished.
+    event_bus: Literal["memory", "redis"] = "memory"
+    redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
+    redis_stream: str = "munimailbox:events"
+    # An event taken by a worker and not finished within this time is given to another.
+    # Longer than the slowest step, or a slow model call is handled twice at once.
+    redis_claim_idle_seconds: float = 600.0
+
     feed_path: Path = Path("data/synthetic/emails.jsonl")
     pipeline_workers: int = 5
     # Run independent agents at the same time. Off only for SQLite, which allows one writer.

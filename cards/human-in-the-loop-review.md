@@ -120,4 +120,33 @@ Plus a test that reads the code and fails if `OutboxMessage(...)` appears anywhe
 **Still open**
 - No CSRF token on the forms; the session cookie is `SameSite=Lax`.
 - A reassigned email with no draft leaves only an audit event, no `Review` row.
-- Queue sorting and filters (FR-18), the dashboard (FR-22) and audit search (FR-23).
+- ~~Queue sorting and filters, the dashboard and audit search.~~ Built the same day; see below.
+
+### Stage 5 — 2026-10-11 (queue, dashboard, audit search)
+
+**What was built**
+- **Queue (FR-18):** most urgent first and, within one urgency, the email that has
+  waited longest. Filters for topic and status in the address (`/queue?topic=permits`),
+  so a filtered view can be bookmarked and the 3-second refresh keeps the filter.
+- **Team dashboard (FR-22):** [app/review/stats.py](../app/review/stats.py). Volume per
+  topic, average handling time, share of drafts approved without changes. Team leads only.
+- **Audit search (FR-23):** per email, per person and per kind of action.
+- Links in the header, limited to the pages the role can open.
+
+**Decisions and why**
+- **The dashboard reuses the scope rule** (`visible_emails`), so a team lead gets their
+  own team's numbers without a second rule to keep in step.
+- **Counts and durations only.** The statistics never read email text, so there is
+  nothing to redact and nothing to restore.
+- **"Approved unchanged" falls out of an earlier decision:** edits are stored next to the
+  model's draft instead of over it, so "was there an edit?" is a simple lookup.
+- **A filtered audit view still verifies the whole chain.** Filtering what is shown must
+  not hide a broken link.
+- **Search text is matched literally.** Typing `%` finds nothing; it is not a wildcard.
+- An unknown filter value is an error (422), not an empty list that looks like "no emails".
+
+**Still open**
+- Handling time is measured from arrival in the system to the decision, not from the
+  moment a caseworker opened the email.
+- An email with no urgency yet is sorted as "normal".
+- The lists are not paged; the audit log shows at most 200 events.

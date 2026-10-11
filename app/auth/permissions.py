@@ -21,6 +21,8 @@ class Permission(StrEnum):
     # Hand an email to another team or caseworker.
     EMAIL_REASSIGN = "email:reassign"
     AUDIT_VIEW = "audit:view"
+    # Volumes, handling time and approval share for a team (FR-22).
+    DASHBOARD_VIEW = "dashboard:view"
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -42,6 +44,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.INTAKE_PULL,
             Permission.EMAIL_VIEW_RESTORED,
             Permission.EMAIL_REASSIGN,
+            Permission.DASHBOARD_VIEW,
         }
     ),
     # Auditors see the process, never the person.

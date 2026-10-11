@@ -6,15 +6,28 @@
 {% else %}
   <div class="notice bad">Hash chain broken at event {{ chain.first_broken_id }}. A record was changed or removed.</div>
 {% endif %}
+<form method="get" action="/audit" class="block">
+  <label>Email ID <input name="email" value="{{ email }}" size="36" placeholder="all emails"></label>
+  <label>Who
+    <select name="actor">
+      <option value="">Everyone</option>
+      {% for person in staff %}<option value="user:{{ person.id }}"{% if actor == "user:" ~ person.id %} selected{% endif %}>{{ person.name }} · {{ person.role.value }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Action starts with <input name="action" value="{{ action }}" size="14" placeholder="review."></label>
+  <button class="plain">Search</button>
+  {% if filtered %}<a href="/audit">Clear</a>{% endif %}
+</form>
+<p class="muted">{{ events | length }} event{{ "" if events | length == 1 else "s" }} shown{% if filtered %} (filtered){% endif %}, newest first, at most 200.</p>
 <table>
   <tr><th>#</th><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Email</th><th>Model</th><th>Left local</th><th>Hash</th></tr>
   {% for event in events %}
   <tr>
     <td>{{ event.id }}</td>
     <td>{{ event.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-    <td>{{ event.actor }}</td>
+    <td>{% if event.actor in names %}<a href="/audit?actor={{ event.actor }}">{{ names[event.actor] }}</a>{% else %}{{ event.actor }}{% endif %}</td>
     <td>{{ event.action }}</td>
-    <td>{{ event.email_id or "—" }}</td>
+    <td>{% if event.email_id %}<a href="/audit?email={{ event.email_id }}">{{ event.email_id }}</a>{% else %}—{% endif %}</td>
     <td>{{ event.model or "—" }}</td>
     <td>{{ "yes" if event.left_local else "no" }}</td>
     <td><code>{{ event.hash[:12] }}…</code></td>

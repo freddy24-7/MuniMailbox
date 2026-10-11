@@ -12,7 +12,8 @@ from app.agents.quality import QualityAgent
 from app.auth.session import SessionCodec
 from app.config import Settings
 from app.db.session import create_engine, create_session_factory
-from app.events.bus import InMemoryEventBus
+from app.events.bus import EventBus, InMemoryEventBus
+from app.events.redis_bus import RedisStreamsEventBus
 from app.inference.clients import ChatClient, EmbeddingClient, OpenAICompatibleClient
 from app.inference.router import InferenceRouter
 from app.orchestrator.workflow import Orchestrator
@@ -33,7 +34,7 @@ class Services:
     cipher: Cipher
     redactor: Redactor
     session_codec: SessionCodec
-    bus: InMemoryEventBus
+    bus: EventBus
     http_clients: list[OpenAICompatibleClient]
 
     async def aclose(self) -> None:
@@ -122,7 +123,16 @@ async def build_services(
         min_similarity=settings.retrieval_min_similarity,
     )
 
-    bus = InMemoryEventBus(workers=settings.pipeline_workers)
+    bus: EventBus
+    if settings.event_bus == "redis":
+        bus = RedisStreamsEventBus(
+            settings.redis_url.get_secret_value(),
+            stream=settings.redis_stream,
+            workers=settings.pipeline_workers,
+            claim_idle_ms=round(settings.redis_claim_idle_seconds * 1000),
+        )
+    else:
+        bus = InMemoryEventBus(workers=settings.pipeline_workers)
     Orchestrator(
         bus=bus,
         session_factory=session_factory,

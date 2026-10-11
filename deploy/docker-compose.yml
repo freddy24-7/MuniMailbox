@@ -28,6 +28,18 @@ services:
     volumes:
       - chroma_data:/data
 
+  redis:
+    image: redis:8-alpine
+    # Append-only file: the event stream survives a restart of the container. A small
+    # memory cap is plenty: events hold identifiers only.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "64mb"]
+    ports:
+      # Localhost only, like the database (GR-11).
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
+  redis_data:
   postgres_data:
   chroma_data:

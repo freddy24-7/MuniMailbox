@@ -149,7 +149,9 @@ Each agent records a duration histogram and a failure counter.
   one fails and why. Undo.
 
 **Still open**
-- No recovery for emails stuck in "processing" after a crash (Stage 5, Redis Streams).
+- ~~No recovery for emails stuck in "processing" after a crash.~~ Solved in Stage 5: see
+  [event-driven-architecture](event-driven-architecture.md). A step that already ran is
+  recognised by its `*.completed` audit event and not run again.
 - ~~Should a failing quality check discard a usable draft?~~ Decided the same day: no.
   The model check is advisory. `EmailContext.final_attempt` tells an agent that a failure
   now would not be retried; the quality agent then keeps the draft, runs its rule checks,

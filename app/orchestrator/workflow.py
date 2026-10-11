@@ -1,13 +1,15 @@
 import asyncio
 import time
 from collections.abc import Sequence
+from enum import Enum
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.base import Agent, EmailContext
 from app.audit import writer as audit
-from app.db.models import Email, EmailStatus
+from app.db.models import AuditEvent, Email, EmailStatus
 from app.db.status import ALLOWED_TRANSITIONS, transition
 from app.events.bus import Event, EventBus
 from app.inference.router import UnredactedInputError
@@ -18,6 +20,12 @@ EMAIL_RECEIVED = "email.received"
 
 # A step is one agent, or several that do not depend on each other and run together.
 Step = Agent | tuple[Agent, ...]
+
+
+class _Ran(Enum):
+    NOW = "now"
+    BEFORE = "before"
+    NOT_NEEDED = "not needed"
 
 
 def completed(agent: Agent) -> str:
@@ -115,22 +123,32 @@ class Orchestrator:
                 # Wait longer each time: a struggling model server needs room, not pressure.
                 await asyncio.sleep(self._backoff_seconds * 2**attempt)
                 continue
-            if ran:
+            if ran is _Ran.NOW:
                 logger.info(
                     "agent.completed",
                     agent=agent.name,
                     duration_ms=round((time.perf_counter() - started) * 1000),
                 )
-            return ran
+            return ran is not _Ran.NOT_NEEDED
         return False
 
     async def _run_once(
         self, event: Event, agent: Agent, final: bool, *, final_attempt: bool
-    ) -> bool:
+    ) -> "_Ran":
         async with self._session_factory() as session:
             email = await session.get_one(Email, event.email_id)
             if email.status not in (EmailStatus.RECEIVED, EmailStatus.PROCESSING):
-                return False  # duplicate or late event for an email that has moved on
+                return _Ran.NOT_NEEDED  # late event for an email that has moved on
+            done_before = await session.scalar(
+                select(AuditEvent.id)
+                .where(AuditEvent.email_id == email.id, AuditEvent.action == completed(agent))
+                .limit(1)
+            )
+            if done_before is not None:
+                # The event was delivered a second time (at-least-once delivery). The work
+                # is not repeated, but the workflow continues from here: that is what
+                # picks an email up again after a crash between "saved" and "published".
+                return _Ran.BEFORE
             if email.status is EmailStatus.RECEIVED:
                 transition(email, EmailStatus.PROCESSING)
 
@@ -149,7 +167,7 @@ class Orchestrator:
                 left_local=result.left_local,
             )
             await session.commit()
-        return True
+        return _Ran.NOW
 
     async def _audit(self, event: Event, agent: Agent, action: str) -> None:
         async with self._session_factory() as session:

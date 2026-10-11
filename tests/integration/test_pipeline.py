@@ -11,7 +11,7 @@ from app.agents.privacy import PrivacyAgent
 from app.agents.quality import QualityAgent
 from app.audit.writer import verify_chain
 from app.db.models import AuditEvent, Draft, Email, EmailStatus, PiiMapping
-from app.events.bus import InMemoryEventBus
+from app.events.bus import Event, InMemoryEventBus
 from app.inference.clients import Completion
 from app.inference.router import InferenceRouter, UnredactedInputError
 from app.orchestrator.ingestion import IncomingEmail, ingest_email
@@ -265,3 +265,60 @@ async def test_five_emails_are_processed_together(
     assert len(fake_llm.calls) == 15
     assert chain.ok
     assert chain.checked == 50
+
+
+async def test_an_event_delivered_twice_does_not_do_the_work_twice(
+    app: FastAPI, session_factory: Db, fake_llm: FakeLLM
+) -> None:
+    """A real event bus delivers at least once. Every step must be safe to receive again."""
+    email = await _ingest(app, incoming_email())
+    services: Services = app.state.services
+    calls_before = len(fake_llm.calls)
+
+    for name in ("email.received", "intake.completed", "policy+case.completed"):
+        await services.bus.publish(Event(name, email.id, email.correlation_id))
+    await services.bus.join()
+
+    async with session_factory() as session:
+        actions = await _actions(session, email)
+        assert len((await session.scalars(select(Draft))).all()) == 1
+    assert len(fake_llm.calls) == calls_before
+    assert len(actions) == len(set(actions)) + 2  # only inference.completed repeats (3x)
+
+
+async def test_an_email_whose_next_event_was_lost_continues_when_the_last_one_comes_again(
+    session_factory: Db, cipher: Cipher, redactor: Redactor, fake_llm: FakeLLM
+) -> None:
+    """The crash window: a step was saved, the process died before publishing the next
+    event. When the bus delivers the unacknowledged event again, the email moves on."""
+    router = InferenceRouter(local=fake_llm, cipher=cipher)
+    steps = [PrivacyAgent(redactor=redactor, cipher=cipher), DraftingAgent(router=router)]
+
+    # First process: only the privacy step exists, so nothing follows it.
+    first = InMemoryEventBus(workers=1)
+    Orchestrator(bus=first, session_factory=session_factory, steps=steps[:1]).register()
+    await first.start()
+    async with session_factory() as session:
+        email = await ingest_email(session, first, cipher, incoming_email())
+    await first.join()
+    await first.stop()
+    async with session_factory() as session:
+        stuck = await session.get_one(Email, email.id)
+        # (With one step, that step is the last and marks the draft ready; put it back.)
+        stuck.status = EmailStatus.PROCESSING
+        await session.commit()
+
+    # Second process, whole workflow: the same event arrives again.
+    second = InMemoryEventBus(workers=1)
+    Orchestrator(bus=second, session_factory=session_factory, steps=steps).register()
+    await second.start()
+    await second.publish(Event("email.received", email.id, email.correlation_id))
+    await second.join()
+    await second.stop()
+
+    async with session_factory() as session:
+        stored = await session.get_one(Email, email.id)
+        actions = await _actions(session, email)
+    assert stored.status is EmailStatus.DRAFT_READY
+    assert actions.count("privacy.completed") == 1
+    assert actions[-1] == "drafting.completed"

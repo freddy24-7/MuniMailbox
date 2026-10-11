@@ -34,6 +34,9 @@
     button { font: inherit; padding: 7px 14px; border: 1px solid var(--accent); border-radius: 5px; background: var(--accent); color: #fff; cursor: pointer; }
     button.plain { background: #fff; color: var(--accent); }
     form { display: inline; }
+    header nav a { margin-left: 14px; }
+    select, input { font: inherit; padding: 5px 8px; }
+    table.numbers td:last-child { text-align: right; }
     form.block { display: block; margin: 8px 0; }
     textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; }
     label { margin-right: 10px; }
@@ -46,6 +49,7 @@
   <header>
     <strong>Municipal Inbox Assistant</strong>
     {% if user %}
+      <nav>{% for label, url in navigation(user) %}<a href="{{ url }}">{{ label }}</a>{% endfor %}</nav>
       <span class="who">{{ user.name }} · {{ user.role.value }}{% if user.team %} · {{ user.team }}{% endif %}</span>
       <form method="post" action="/logout"><button class="plain">Log out</button></form>
     {% endif %}
