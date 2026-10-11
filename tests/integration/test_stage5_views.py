@@ -105,8 +105,9 @@ async def test_the_queue_filters_by_topic_and_status_within_the_users_own_scope(
 # --- Dashboard ---
 
 
-async def _handled_emails(app: FastAPI, users: Users) -> None:
-    """Two emails through the real pipeline: one approved as it came, one edited first."""
+async def _handled_emails(app: FastAPI, users: Users) -> uuid.UUID:
+    """Two emails through the real pipeline: one approved as it came, one edited first.
+    Returns the id of the email that was approved as it came."""
     services: Services = app.state.services
     async with services.session_factory() as session:
         for number in range(2):
@@ -119,6 +120,9 @@ async def _handled_emails(app: FastAPI, users: Users) -> None:
         await client.post(f"/drafts/{first.id}/approve")
         await client.post(f"/drafts/{second.id}/edit", data={"text": "Aangepast antwoord."})
         await client.post(f"/drafts/{second.id}/approve")
+    # Named by its draft: with several workers the emails are not finished in the order
+    # they came in, so "the first email" would be a guess.
+    return first.email_id
 
 
 async def test_the_dashboard_counts_the_team_leads_own_team(
@@ -185,25 +189,23 @@ def _rows(page: str) -> int:
 async def test_the_audit_log_can_be_searched_per_email_user_and_action(
     app: FastAPI, users: Users, session_factory: Db
 ) -> None:
-    await _handled_emails(app, users)
-    async with session_factory() as session:
-        first, _ = (await session.scalars(select(Email).order_by(Email.ingested_at))).all()
+    unchanged = await _handled_emails(app, users)
     caseworker = f"user:{users[Role.CASEWORKER].id}"
 
     async with logged_in(app, users[Role.AUDITOR]) as client:
         everything = (await client.get("/audit")).text
-        per_email = (await client.get("/audit", params={"email": str(first.id)})).text
+        per_email = (await client.get("/audit", params={"email": str(unchanged)})).text
         per_user = (await client.get("/audit", params={"actor": caseworker})).text
         per_action = (await client.get("/audit", params={"action": "review."})).text
         combined = await client.get(
-            "/audit", params={"email": str(first.id), "actor": caseworker, "action": "review."}
+            "/audit", params={"email": str(unchanged), "actor": caseworker, "action": "review."}
         )
         wildcard = (await client.get("/audit", params={"action": "%"})).text
         garbage = await client.get("/audit", params={"email": "not-an-id"})
 
-    # First email: received, 9 pipeline events, approved, outbox. No views: nobody opened it.
+    # This email: received, 9 pipeline events, approved, outbox. No views: nobody opened it.
     assert _rows(per_email) == 12
-    assert str(first.id) in per_email
+    assert str(unchanged) in per_email
     # The caseworker: one login, two approvals, one edit.
     assert _rows(per_user) == 4
     assert "privacy.completed" not in per_user
