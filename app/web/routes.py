@@ -2,6 +2,7 @@ import json
 import uuid
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,11 +15,19 @@ from app.auth.dependencies import current_user, require
 from app.auth.permissions import Permission, PermissionDeniedError, has_permission
 from app.auth.scope import can_access_email, visible_emails
 from app.auth.session import SESSION_COOKIE
-from app.db.models import AuditEvent, Draft, Email, OutboxMessage, User
+from app.db.models import AuditEvent, Draft, Email, OutboxMessage, Review, Role, User
 from app.db.session import get_session
 from app.orchestrator.ingestion import ingest_next_from_feed
 from app.privacy.restore import read_original, restore
-from app.review.service import NotApprovableError, approve_draft
+from app.review.service import (
+    REASSIGNABLE,
+    NotApprovableError,
+    approve_draft,
+    current_text,
+    edit_draft,
+    reassign_email,
+    reject_draft,
+)
 from app.services import Services
 
 router = APIRouter(include_in_schema=False)
@@ -31,6 +40,12 @@ Db = Annotated[AsyncSession, Depends(get_session)]
 def _services(request: Request) -> Services:
     services: Services = request.app.state.services
     return services
+
+
+async def _form(request: Request) -> dict[str, str]:
+    """The fields of a plain HTML form (application/x-www-form-urlencoded)."""
+    fields = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+    return {name: values[-1] for name, values in fields.items()}
 
 
 def _home_for(user: User) -> str:
@@ -139,11 +154,29 @@ async def email_detail(
     draft = await session.scalar(
         select(Draft).where(Draft.email_id == email.id).order_by(Draft.created_at.desc()).limit(1)
     )
-    draft_restored = None
+    draft_restored = reply_redacted = None
+    reviews: list[Review] = []
     if draft is not None:
+        reply_redacted = await current_text(session, draft)
         (draft_restored,) = await restore(
-            session, cipher, user=user, email=email, texts=[draft.text_redacted]
+            session, cipher, user=user, email=email, texts=[reply_redacted]
         )
+        reviews = list(
+            await session.scalars(
+                select(Review).where(Review.draft_id == draft.id).order_by(Review.created_at)
+            )
+        )
+    rejection = next((review for review in reviews if review.reason), None)
+    rejection_reason = None
+    if rejection is not None:
+        (rejection_reason,) = await restore(
+            session, cipher, user=user, email=email, texts=[rejection.reason or ""]
+        )
+    caseworkers = (
+        await session.scalars(
+            select(User).where(User.role == Role.CASEWORKER).order_by(User.team, User.name)
+        )
+    ).all()
     case_context = email.case_context or []
     case_summaries = await restore(
         session,
@@ -169,12 +202,23 @@ async def email_detail(
             "original": read_original(cipher, user=user, email=email),
             "draft": draft,
             "draft_restored": draft_restored,
+            "reply_redacted": reply_redacted,
+            "edited": reply_redacted is not None and reply_redacted != draft.text_redacted
+            if draft
+            else False,
+            "rejection_reason": rejection_reason,
+            "caseworkers": caseworkers,
+            "teams": sorted({worker.team for worker in caseworkers if worker.team}),
             "cases": [
                 {**case, "summary": summary}
                 for case, summary in zip(case_context, case_summaries, strict=True)
             ],
             "sent": json.loads(cipher.decrypt(sent.payload_encrypted)) if sent else None,
             "can_approve": has_permission(user.role, Permission.DRAFT_APPROVE),
+            "can_edit": has_permission(user.role, Permission.DRAFT_EDIT),
+            "can_reject": has_permission(user.role, Permission.DRAFT_REJECT),
+            "can_reassign": has_permission(user.role, Permission.EMAIL_REASSIGN)
+            and email.status in REASSIGNABLE,
         },
     )
 
@@ -196,6 +240,89 @@ async def approve(
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(error)) from error
     await session.commit()
     return RedirectResponse(f"/emails/{outbox_message.email_id}", status_code=303)
+
+
+def _refused(error: Exception) -> HTTPException:
+    """Out of scope looks like "does not exist"; anything else is a conflict with the
+    state the email is in."""
+    if isinstance(error, PermissionDeniedError):
+        return HTTPException(status.HTTP_404_NOT_FOUND)
+    return HTTPException(status.HTTP_409_CONFLICT, detail=str(error))
+
+
+@router.post("/drafts/{draft_id}/edit")
+async def edit(
+    request: Request,
+    draft_id: uuid.UUID,
+    session: Db,
+    user: Annotated[User, Depends(require(Permission.DRAFT_EDIT))],
+) -> RedirectResponse:
+    services = _services(request)
+    try:
+        review = await edit_draft(
+            session,
+            services.cipher,
+            services.redactor,
+            user=user,
+            draft_id=draft_id,
+            text=(await _form(request)).get("text", ""),
+        )
+    except (PermissionDeniedError, NotApprovableError) as error:
+        raise _refused(error) from error
+    draft = await session.get_one(Draft, review.draft_id)
+    await session.commit()
+    return RedirectResponse(f"/emails/{draft.email_id}", status_code=303)
+
+
+@router.post("/drafts/{draft_id}/reject")
+async def reject(
+    request: Request,
+    draft_id: uuid.UUID,
+    session: Db,
+    user: Annotated[User, Depends(require(Permission.DRAFT_REJECT))],
+) -> RedirectResponse:
+    services = _services(request)
+    try:
+        review = await reject_draft(
+            session,
+            services.cipher,
+            services.redactor,
+            user=user,
+            draft_id=draft_id,
+            reason=(await _form(request)).get("reason", ""),
+        )
+    except (PermissionDeniedError, NotApprovableError) as error:
+        raise _refused(error) from error
+    draft = await session.get_one(Draft, review.draft_id)
+    await session.commit()
+    return RedirectResponse(f"/emails/{draft.email_id}", status_code=303)
+
+
+@router.post("/emails/{email_id}/reassign")
+async def reassign(
+    request: Request,
+    email_id: uuid.UUID,
+    session: Db,
+    user: Annotated[User, Depends(require(Permission.EMAIL_REASSIGN))],
+) -> RedirectResponse:
+    form = await _form(request)
+    try:
+        assignee_id = uuid.UUID(form["assignee"]) if form.get("assignee") else None
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY) from error
+    try:
+        await reassign_email(
+            session,
+            user=user,
+            email_id=email_id,
+            team=form.get("team") or None,
+            assignee_id=assignee_id,
+        )
+    except (PermissionDeniedError, NotApprovableError) as error:
+        raise _refused(error) from error
+    await session.commit()
+    # The email may now be outside this user's scope, so back to the queue.
+    return RedirectResponse("/queue", status_code=303)
 
 
 # --- Audit log (auditors: process only, no email content) ---

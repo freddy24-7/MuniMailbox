@@ -32,10 +32,8 @@ def test_pii_labels_point_at_the_exact_text() -> None:
 
 
 def test_render_labels_personal_slots_only() -> None:
-    text, spans = render(
-        "Ik woon in {city}, BSN {bsn}.", {"city": "Teststad", "bsn": "123"}, "body"
-    )
-    assert text == "Ik woon in Teststad, BSN 123."
+    text, spans = render("Vraag over {topic}, BSN {bsn}.", {"topic": "afval", "bsn": "123"}, "body")
+    assert text == "Vraag over afval, BSN 123."
     assert [(span.entity_type, span.value) for span in spans] == [(EntityType.BSN, "123")]
 
 

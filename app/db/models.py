@@ -9,7 +9,7 @@ Where personal data lives, and in what form:
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -198,7 +198,11 @@ class Review(Base):
     # The caseworker edits restored text; it is redacted again before it is stored.
     edited_text_redacted: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set by the application: a database clock may tick in whole seconds, and the order of
+    # two edits decides which text is sent.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now()
+    )
 
 
 class OutboxMessage(Base):

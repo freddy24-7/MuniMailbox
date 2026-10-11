@@ -52,20 +52,62 @@
         {% for warning in draft.warnings %}
           <p class="warning">{{ warning.message }} <span class="muted">({{ warning.type.replace("_", " ") }}, by {{ warning.origin }})</span></p>
         {% endfor %}
-        <pre class="text">{{ draft_restored }}</pre>
+        {% if edited %}<p class="muted">Edited by a caseworker. The model's version is kept below.</p>{% endif %}
+        {% if rejection_reason %}<div class="notice bad">Rejected: {{ rejection_reason }}</div>{% endif %}
+        {% set open = original and email.status.value == "draft_ready" %}
+        {% if can_edit and open %}
+          <form method="post" action="/drafts/{{ draft.id }}/edit" class="block">
+            <textarea name="text" rows="14">{{ draft_restored }}</textarea>
+            <p><button class="plain">Save changes</button></p>
+          </form>
+        {% else %}
+          <pre class="text">{{ draft_restored }}</pre>
+        {% endif %}
         <details>
           <summary>As stored (placeholders)</summary>
-          <pre class="text">{{ draft.text_redacted }}</pre>
+          <pre class="text">{{ reply_redacted }}</pre>
         </details>
-        {% if can_approve and original and email.status.value == "draft_ready" %}
+        {% if edited %}
+          <details>
+            <summary>As the model wrote it</summary>
+            <pre class="text">{{ draft.text_redacted }}</pre>
+          </details>
+        {% endif %}
+        {% if can_approve and open %}
           <p><form method="post" action="/drafts/{{ draft.id }}/approve"><button>Approve and send</button></form></p>
         {% elif email.status.value == "draft_ready" %}
           <p class="muted">Only a caseworker can approve a draft.</p>
+        {% endif %}
+        {% if can_reject and email.status.value == "draft_ready" %}
+          <form method="post" action="/drafts/{{ draft.id }}/reject" class="block">
+            <label>Reject with a reason <input name="reason" required maxlength="500"></label>
+            <button class="plain">Reject</button>
+          </form>
         {% endif %}
       {% else %}
         <p class="muted">No draft yet.</p>
       {% endif %}
     </section>
+
+    {% if can_reassign %}
+    <section class="panel">
+      <h2>Reassign</h2>
+      <form method="post" action="/emails/{{ email.id }}/reassign" class="block">
+        <label>To team
+          <select name="team">
+            {% for team in teams %}<option value="{{ team }}"{% if team == email.team %} selected{% endif %}>{{ team }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>or to one caseworker
+          <select name="assignee">
+            <option value="">(whole team)</option>
+            {% for worker in caseworkers %}<option value="{{ worker.id }}">{{ worker.name }} · {{ worker.team }}</option>{% endfor %}
+          </select>
+        </label>
+        <button class="plain">Reassign</button>
+      </form>
+    </section>
+    {% endif %}
 
     <section class="panel">
       <h2>Sources used in the draft</h2>

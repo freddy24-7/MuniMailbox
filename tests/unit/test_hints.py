@@ -18,6 +18,7 @@ def test_citizen_record_becomes_known_values() -> None:
         (EntityType.PERSON, "van der Zzyzx"),
         (EntityType.ADDRESS, "Kerkstraat 12"),
         (EntityType.POSTCODE, "1234 AB"),
+        (EntityType.ADDRESS, "Teststad"),
         (EntityType.BSN, "000000000"),
         (EntityType.EMAIL, "xyq@example.org"),
         (EntityType.PHONE, "06-00000000"),

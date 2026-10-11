@@ -15,6 +15,11 @@ class Permission(StrEnum):
     EMAIL_VIEW_RESTORED = "email:view_restored"
     # Move a draft to the outbox. Caseworkers only (CLAUDE.md rule 3).
     DRAFT_APPROVE = "draft:approve"
+    # Change the text of a draft, or turn it down with a reason (FR-20).
+    DRAFT_EDIT = "draft:edit"
+    DRAFT_REJECT = "draft:reject"
+    # Hand an email to another team or caseworker.
+    EMAIL_REASSIGN = "email:reassign"
     AUDIT_VIEW = "audit:view"
 
 
@@ -25,10 +30,19 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.INTAKE_PULL,
             Permission.EMAIL_VIEW_RESTORED,
             Permission.DRAFT_APPROVE,
+            Permission.DRAFT_EDIT,
+            Permission.DRAFT_REJECT,
+            Permission.EMAIL_REASSIGN,
         }
     ),
+    # A team lead assigns work but does not write or send replies.
     Role.TEAM_LEAD: frozenset(
-        {Permission.QUEUE_VIEW, Permission.INTAKE_PULL, Permission.EMAIL_VIEW_RESTORED}
+        {
+            Permission.QUEUE_VIEW,
+            Permission.INTAKE_PULL,
+            Permission.EMAIL_VIEW_RESTORED,
+            Permission.EMAIL_REASSIGN,
+        }
     ),
     # Auditors see the process, never the person.
     Role.AUDITOR: frozenset({Permission.AUDIT_VIEW}),

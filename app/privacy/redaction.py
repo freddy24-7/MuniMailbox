@@ -89,6 +89,32 @@ def _with_surname(span: Span, text: str) -> Span:
     return replace(span, end=rest.end()) if rest else span
 
 
+# A town as it follows a postcode, on the same line: "Spankeren", "Radio Kootwijk",
+# "Santpoort-Noord", "Egmond aan Zee", "Capelle aan den IJssel", "'s-Hertogenbosch".
+_TOWN_WORD = r"(?:'s-)?(?:IJ|[A-ZÀ-Ý])[a-zà-ÿ][\w'-]*"
+_TOWN_AFTER_POSTCODE = re.compile(
+    rf",? ({_TOWN_WORD}(?:(?: (?:aan|op|bij|de|den|het|ter|van))* {_TOWN_WORD})?)"
+)
+# The same shape, but the start of a next sentence written without a full stop.
+_NOT_A_TOWN = frozenset({"Kunt", "Kan", "Wilt", "Graag", "Mijn", "Wij", "Ik", "Hoe", "Wat"})
+
+
+def _town_after(span: Span, text: str) -> Span | None:
+    """The town behind a postcode. NER knows Utrecht but not Spankeren; in an address the
+    position says what the word is."""
+    if span.entity_type is not EntityType.POSTCODE:
+        return None
+    town = _TOWN_AFTER_POSTCODE.match(text, span.end)
+    if town is None:
+        return None
+    words = town.group(1).split(" ")
+    if words[-1] in _NOT_A_TOWN:
+        words = words[:1]  # "Utrecht Graag hoor ik ..." is one town and a new sentence
+    if words[0] in _NOT_A_TOWN:
+        return None
+    return Span(town.start(1), town.start(1) + len(" ".join(words)), EntityType.ADDRESS, span.score)
+
+
 def _occurrences(value: str, text: str, *, ignore_case: bool) -> list[tuple[int, int]]:
     pattern = rf"(?<!\w){re.escape(value)}(?!\w)"
     return [m.span() for m in re.finditer(pattern, text, re.IGNORECASE if ignore_case else 0)]
@@ -128,7 +154,9 @@ class Redactor:
                 for start, end in _occurrences(known_value.value, text, ignore_case=True)
             ]
             recognised_here = [_with_surname(span, text) for span in self._recognise(text)]
-            spans_per_text.append(_without_overlaps(known + recognised_here))
+            found = _without_overlaps(known + recognised_here)
+            towns = [town for span in found if (town := _town_after(span, text))]
+            spans_per_text.append(_without_overlaps(found + towns))
 
         recognised: dict[str, EntityType] = {}
         for text, spans in zip(texts, spans_per_text, strict=True):

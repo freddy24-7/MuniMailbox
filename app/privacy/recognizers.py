@@ -5,8 +5,10 @@ which Presidio adds to the score. That is how a loose pattern stays usable.
 """
 
 import re
+from pathlib import Path
 
-from presidio_analyzer import Pattern, PatternRecognizer
+from presidio_analyzer import EntityRecognizer, Pattern, PatternRecognizer, RecognizerResult
+from presidio_analyzer.nlp_engine import NlpArtifacts
 
 from app.privacy.checksums import bsn_is_valid
 
@@ -144,3 +146,46 @@ def signature_recognizer() -> PatternRecognizer:
         ],
         global_regex_flags=re.MULTILINE | re.IGNORECASE,
     )
+
+
+PLACE_NAMES_FILE = Path(__file__).parent / "data" / "woonplaatsen.txt"
+# Names people use that the official list writes differently.
+_PLACE_ALIASES = ("Den Haag", "Den Bosch")
+# A place name counts only after one of these. Many villages are also ordinary words
+# ("Best", "Made", "Hee", "Een"); "in Best" is a place, "Best wel" is not.
+_PLACE_CONTEXT = "in|te|naar|uit|vanuit|bij|nabij|richting|gemeente|woonplaats"
+
+
+def load_place_names(path: Path = PLACE_NAMES_FILE) -> list[str]:
+    """The official Dutch place names (CBS), without the province suffix of the few that
+    occur twice: "Bergen (NH)" is written "Bergen" in an email."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    names = {re.sub(r"\s*\(.*\)$", "", line).strip() for line in lines if line[:1] != "#"}
+    return sorted({*names, *_PLACE_ALIASES} - {""})
+
+
+class DutchPlaceNameRecognizer(EntityRecognizer):
+    """Dutch towns and villages, from a list.
+
+    NER knows the cities and misses the villages, and a village narrows a person down
+    the most. The list is closed and official, so it can simply be looked up.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(supported_entities=["NL_PLACE"], supported_language=LANGUAGE)
+        # Longest first: "Egmond aan Zee" before "Egmond".
+        names = sorted(load_place_names(), key=len, reverse=True)
+        self._pattern = re.compile(
+            rf"(?<!\w)(?i:{_PLACE_CONTEXT})\s({'|'.join(map(re.escape, names))})(?![\w-])"
+        )
+
+    def load(self) -> None:
+        """Nothing to load: the list is read once in the constructor."""
+
+    def analyze(
+        self, text: str, entities: list[str], nlp_artifacts: NlpArtifacts | None = None
+    ) -> list[RecognizerResult]:
+        return [
+            RecognizerResult("NL_PLACE", match.start(1), match.end(1), 0.85)
+            for match in self._pattern.finditer(text)
+        ]

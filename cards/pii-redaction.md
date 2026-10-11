@@ -175,3 +175,43 @@ cloud model. Redaction is the first pipeline step and the precondition for every
 - The trade-off is deliberate: "Hallo Sanne Kunt u ..." without a comma now loses the
   word "Kunt". Losing a word is the cheaper mistake.
 - NER also over-redacts on its own: "Sanne van de gemeente" becomes one PERSON.
+
+### Stage 4 — 2026-10-11 (a town went to the cloud)
+
+**What was found**
+- The first real cloud run sent "[ADDRESS_1], [POSTCODE_1] Spankeren" to the model.
+  Street and postcode were replaced; the village was not.
+- Towns were not labelled in the test set, so the recall gate could not see it. Once
+  labelled, ADDRESS recall was 81.5%: NER knows Utrecht, not Spankeren. About half of
+  the town names were left standing.
+
+**Case first, then fix**
+- `city` is now a labelled slot, plus a hard case with a second person's town.
+- Two fixes: the sender's town is taken from their citizen record
+  ([hints.py](../app/privacy/hints.py)), and whatever capitalised word or words follow a
+  postcode are treated as the town ([redaction.py](../app/privacy/redaction.py),
+  `_town_after`). In an address, the position says what the word is.
+- Once a town is recognised behind a postcode, the existing propagation step redacts it
+  everywhere else in the email.
+
+**Seen in practice**
+- ADDRESS recall: 81.5% → 99.7% for the pipeline, 96.8% for the recognizers alone.
+- What is still missed: a second person's village mentioned only in running text, with
+  no postcode near it ("mijn vader woont in Luxwoude").
+- The lesson is about the gate, not the recognizer: **what is not labelled is not
+  measured.** The gate said 99.8% the whole time.
+
+**Still open**
+- ~~A list of all Dutch place names would close the remaining gap.~~ Added the same day:
+  the 2,427 official place names from CBS open data
+  ([woonplaatsen.txt](../app/privacy/data/woonplaatsen.txt), refreshed with
+  `scripts/fetch_place_names.py`), as `DutchPlaceNameRecognizer`.
+- A name from the list counts only after a preposition ("in", "te", "naar", "uit", …).
+  "Best", "Made", "Een" and "Hee" are villages and ordinary words; "in Best" is a place,
+  "Best vervelend" is not.
+- ADDRESS recall is now 100% on the test set. Read that number with care: the test
+  towns are generated from a list that overlaps the official one almost completely, and
+  always appear after a preposition or a postcode. A village written as "Luxwoude is
+  mijn dorp" is still missed.
+- The list came from CBS on purpose, not from the generator's own list, so the
+  recognizer is not built from the test data.

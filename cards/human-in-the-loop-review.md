@@ -82,3 +82,42 @@ Plus a test that reads the code and fails if `OutboxMessage(...)` appears anywhe
 **Not met yet (Stage 5)**
 - Edit, reject with reason, reassign; sorting and filters; the team-lead dashboard.
 - Measuring how much a caseworker changed a draft.
+
+### Stage 5 — 2026-10-11 (edit, reject, reassign)
+
+**What was built**
+- [app/review/service.py](../app/review/service.py): `edit_draft`, `reject_draft` and
+  `reassign_email`, next to `approve_draft`. Each checks the permission, then the scope,
+  then the email's status, and writes an audit event.
+- The detail page: an edit box with the restored text, a reject form with a required
+  reason, and a reassign form (to a team or to one caseworker).
+
+**Decisions and why**
+- **The model's draft is never overwritten.** An edit is a `Review` row with the new
+  text. "The reply as it stands" is the last edit, or else the model's text
+  (`current_text`). This keeps what the model wrote next to what was sent, which the
+  team-lead dashboard needs ("approved unchanged", FR-22).
+- **What a caseworker types is redacted again before it is stored.** They work in the
+  restored text, so it contains the citizen's details and maybe new ones. The email's
+  own mapping is continued: a known value gets its old placeholder back, a new one gets
+  the next number. The same goes for the reason of a rejection.
+- **Approve sends the edited text**, restored at that moment.
+- **Rejected is final.** No approving or editing afterwards; nothing reaches the outbox.
+- **Reassigning changes who can see the email.** The person who reassigns it to another
+  team gets a 404 on it a moment later. That is the scope rule working, not a bug.
+- **Team leads can reassign but not edit, reject or approve.** They route work; they do
+  not write replies.
+
+**Seen in practice**
+- A test caught a real ordering bug: the database stamped reviews in whole seconds, so
+  "the last edit" was sometimes the first. Reviews now get their time from the application.
+- Forms are parsed by hand (`parse_qs`) to avoid adding a dependency for three forms.
+
+**Try it**
+- Edit a draft and add a made-up phone number. Open "As stored (placeholders)".
+- `uv run pytest tests/integration/test_review_actions.py -v`
+
+**Still open**
+- No CSRF token on the forms; the session cookie is `SameSite=Lax`.
+- A reassigned email with no draft leaves only an audit event, no `Review` row.
+- Queue sorting and filters (FR-18), the dashboard (FR-22) and audit search (FR-23).

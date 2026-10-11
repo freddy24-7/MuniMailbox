@@ -30,4 +30,8 @@ def known_values_for(citizen: Citizen) -> list[KnownValue]:
         known.append(KnownValue(EntityType.ADDRESS, street.strip()))
     if postcode := _POSTCODE.search(citizen.address):
         known.append(KnownValue(EntityType.POSTCODE, postcode.group()))
+        # What follows the postcode is the town. Recognizers know the cities, not the
+        # villages, and a village narrows a person down the most.
+        if town := citizen.address[postcode.end() :].strip(" ,"):
+            known.append(KnownValue(EntityType.ADDRESS, town))
     return [value for value in known if value.value]

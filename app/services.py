@@ -31,6 +31,7 @@ class Services:
     engine: AsyncEngine
     session_factory: async_sessionmaker[AsyncSession]
     cipher: Cipher
+    redactor: Redactor
     session_codec: SessionCodec
     bus: InMemoryEventBus
     http_clients: list[OpenAICompatibleClient]
@@ -148,6 +149,7 @@ async def build_services(
         engine=engine,
         session_factory=session_factory,
         cipher=cipher,
+        redactor=redactor,
         session_codec=SessionCodec(
             settings.session_secret.get_secret_value(), settings.session_ttl_seconds
         ),

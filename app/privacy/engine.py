@@ -6,6 +6,7 @@ from app.privacy.recognizers import (
     LANGUAGE,
     DutchBsnRecognizer,
     DutchPhoneRecognizer,
+    DutchPlaceNameRecognizer,
     numeric_date_recognizer,
     postcode_recognizer,
     signature_recognizer,
@@ -19,6 +20,7 @@ ENTITY_MAP: dict[str, EntityType] = {
     "NL_SIGNATURE_NAME": EntityType.PERSON,
     "LOCATION": EntityType.ADDRESS,
     "NL_STREET_ADDRESS": EntityType.ADDRESS,
+    "NL_PLACE": EntityType.ADDRESS,
     "EMAIL_ADDRESS": EntityType.EMAIL,
     "PHONE_NUMBER": EntityType.PHONE,
     "NL_PHONE": EntityType.PHONE,
@@ -46,6 +48,7 @@ def build_analyzer(spacy_model: str) -> AnalyzerEngine:
         postcode_recognizer(),
         numeric_date_recognizer(),
         signature_recognizer(),
+        DutchPlaceNameRecognizer(),
     ):
         registry.add_recognizer(recognizer)
     return AnalyzerEngine(registry=registry, nlp_engine=nlp_engine, supported_languages=[LANGUAGE])

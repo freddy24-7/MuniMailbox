@@ -112,6 +112,18 @@ HARD_CASES: tuple[EmailTemplate, ...] = (
         "woont. Kunt u de ontvangst bevestigen?\n\n"
         "Met vriendelijke groet,\n{name}",
     ),
+    # A second person's town, once as part of an address and once in running text. The
+    # sender's own town is known from their record; this one only the recognizers can find.
+    EmailTemplate(
+        Topic.ADDRESS_CHANGE,
+        Urgency.NORMAL,
+        "Inschrijving van mijn vader",
+        "Geachte heer/mevrouw,\n\n"
+        "Mijn vader woont nu op {other_street_address}, {other_postcode} {other_city} en "
+        "komt bij mij wonen. Hij heeft zijn hele leven in {other_city} gewoond. Hoe schrijf "
+        "ik hem in op mijn adres?\n\n"
+        "Met vriendelijke groet,\n{name}",
+    ),
     # A nine-digit number that is not a BSN must survive (precision, not recall), next
     # to data that must go.
     EmailTemplate(

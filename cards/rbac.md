@@ -110,3 +110,15 @@ view another team's emails.
 **Still open**
 - Until the intake agent routes by topic (Stage 4), an email belongs to the team of
   whoever fetched it. Reassigning is Stage 5.
+
+### Stage 5 — 2026-10-11 (three more permissions)
+
+- New: `draft:edit`, `draft:reject` (caseworker) and `email:reassign` (caseworker and
+  team lead). Adding them was an edit to the one table in
+  [permissions.py](../app/auth/permissions.py) plus one `require(...)` per endpoint.
+- Every new action is tested the same three ways: the wrong role gets 403 at the
+  endpoint, the service behind it raises on its own, and the "outsider" (right role,
+  wrong team) gets 404.
+- Reassignment is the first action that *changes* scope. After it, the old team's
+  access is gone immediately, because scope is computed from the email on every request
+  and stored nowhere else.

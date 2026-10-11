@@ -38,6 +38,8 @@ _BASE_SLOTS: dict[str, EntityType] = {
     "word_name": EntityType.PERSON,
     "street_address": EntityType.ADDRESS,
     "plain_street_address": EntityType.ADDRESS,
+    # A town narrows a person down, in a village to a handful of people.
+    "city": EntityType.ADDRESS,
     "postcode": EntityType.POSTCODE,
     "postcode_lower": EntityType.POSTCODE,
     "bsn": EntityType.BSN,

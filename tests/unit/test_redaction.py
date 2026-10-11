@@ -90,3 +90,43 @@ def test_words_after_a_first_name_that_are_not_a_surname_are_kept(redactor: Reda
         ("Uitkering van Sanne BSN onbekend.", "BSN onbekend"),
     ):
         assert kept in redactor.redact([text]).texts[0], text
+
+
+@pytest.mark.parametrize(
+    "town",
+    [
+        "Spankeren",
+        "Radio Kootwijk",
+        "Santpoort-Noord",
+        "Hee",
+        "Egmond aan Zee",
+        "De Koog",
+        "Capelle aan den IJssel",
+        "'s-Gravenhage",
+    ],
+)
+def test_the_town_after_a_postcode_is_redacted(redactor: Redactor, town: str) -> None:
+    """Found in Stage 4: "[ADDRESS_1], [POSTCODE_1] Spankeren" went to the cloud model.
+    NER knows the big cities, not the villages."""
+    (text,) = redactor.redact([f"Zij woont op Kerkstraat 12, 1234 AB {town}. Kunt u helpen?"]).texts
+    assert town not in text
+    assert text.endswith(". Kunt u helpen?")
+
+
+def test_what_follows_a_postcode_is_not_always_a_town(redactor: Redactor) -> None:
+    (text,) = redactor.redact(["Mijn postcode is 1234 AB en ik woon hier al tien jaar."]).texts
+    assert text == "Mijn postcode is [POSTCODE_1] en ik woon hier al tien jaar."
+
+
+def test_the_senders_town_is_redacted_wherever_it_stands(redactor: Redactor) -> None:
+    known = [KnownValue(EntityType.ADDRESS, "Spankeren")]
+    (text,) = redactor.redact(["Ik woon al jaren in Spankeren en wil hier blijven."], known).texts
+    assert text == "Ik woon al jaren in [ADDRESS_1] en wil hier blijven."
+
+
+def test_a_sentence_that_starts_right_after_the_town_is_kept(redactor: Redactor) -> None:
+    (text,) = redactor.redact(
+        ["Mijn adres: Kerkstraat 12, 1234 AB Spankeren Graag hoor ik van u."]
+    ).texts
+    assert "Spankeren" not in text
+    assert text.endswith("Graag hoor ik van u.")

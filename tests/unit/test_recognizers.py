@@ -1,6 +1,7 @@
 import pytest
 
 from app.privacy.entities import EntityType
+from app.privacy.recognizers import load_place_names
 from app.privacy.redaction import Redactor
 from tests.helpers import BSN
 
@@ -71,3 +72,32 @@ def test_ordinary_text_is_left_alone(redactor: Redactor, text: str) -> None:
     """Precision: a redactor that replaces everything has perfect recall and is useless."""
     assert redactor.redact([text]).texts == [text]
     assert _types(redactor, text) == []
+
+
+@pytest.mark.parametrize("place", ["Luxwoude", "Spankeren", "Egmond aan Zee", "Den Haag", "Hee"])
+def test_a_village_in_running_text_is_redacted(redactor: Redactor, place: str) -> None:
+    """NER knows the cities; the villages come from the official list of place names."""
+    (text,) = redactor.redact([f"Mijn vader heeft zijn hele leven in {place} gewoond."]).texts
+    assert text == "Mijn vader heeft zijn hele leven in [ADDRESS_1] gewoond."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Best vervelend dat dit zo lang duurt.",  # Best, Made, Een and Hee are villages too
+        "Made by hand, staat er op de container.",
+        "Een week geleden heb ik dit al gemeld.",
+        "Ik wil graag weten wat de kosten zijn.",
+    ],
+)
+def test_a_word_that_is_also_a_village_is_kept_without_a_preposition(
+    redactor: Redactor, text: str
+) -> None:
+    assert redactor.redact([text]).texts == [text]
+
+
+def test_the_place_name_list_is_the_official_one() -> None:
+    names = load_place_names()
+    assert len(names) > 2000
+    assert {"Utrecht", "Spankeren", "'s-Gravenhage", "Den Haag", "Bergen"} <= set(names)
+    assert not any("(" in name for name in names)

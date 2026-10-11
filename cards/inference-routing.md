@@ -135,3 +135,18 @@ first. It is also where cost, latency and model choice are decided and recorded.
   (the one-line draft) stays local.
 - What happens when local and cloud both fail: today the agent is retried, then the email
   goes to "needs attention". No alert yet (Stage 6).
+
+### Stage 4 — 2026-10-11 (first real cloud run)
+
+- `CLOUD_LLM_ENABLED=true` with `CLOUD_ROUTE_MIN_CHARS=0` sends every chat call to
+  Mistral; embeddings stay local. One email end to end took about 7 seconds.
+- The free plan lists `mistral-small-latest` but allows it 0 requests per minute: every
+  call answered 429. `open-mistral-nemo` works, and Mistral answers that name with
+  `ministral-8b`. The audit log records the model that actually answered.
+- Intake was right on a hard case (an angry email with a veiled threat: complaint, high
+  urgency, sensitive). The draft was fluent Dutch and cited its sources.
+- The quality agent, on a different email, reported a real gap: the draft told the
+  citizen to phone instead of answering "which details do you need?", although the
+  source listed them.
+- The cloud run is also what exposed the unredacted town name
+  (see [pii-redaction](pii-redaction.md)): a leak is only visible once something leaves.

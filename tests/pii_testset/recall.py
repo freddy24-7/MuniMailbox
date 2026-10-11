@@ -33,6 +33,7 @@ class Case:
     def about_other(self, span: PiiSpan) -> bool:
         """True for a value the sender's citizen record cannot help with."""
         other_values = {self.other.name, self.other.street_address, self.other.postcode}
+        other_values |= {self.other.city}
         other_values |= {self.other.bsn, self.other.iban, self.other.phone, self.other.email}
         other_values |= {self.other.date_of_birth, name_with_word_surname(self.other.name)}
         return span.value in other_values
