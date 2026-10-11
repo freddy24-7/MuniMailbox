@@ -11,6 +11,9 @@ class EmailContext:
     correlation_id: uuid.UUID
     # The orchestrator owns the transaction: agents add and flush, they do not commit.
     session: AsyncSession
+    # True when a failure now would not be retried. An agent whose work is advisory can
+    # then finish without it instead of failing the email.
+    final_attempt: bool = True
 
 
 @dataclass(frozen=True)

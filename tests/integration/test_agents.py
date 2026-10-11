@@ -2,11 +2,16 @@
 
 from datetime import UTC, datetime
 
+import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.agents.base import EmailContext
+from app.agents.quality import QualityAgent
+from app.config import Settings
 from app.db.models import (
+    AuditEvent,
     Case,
     CaseStatus,
     Citizen,
@@ -19,7 +24,12 @@ from app.db.models import (
     Urgency,
     User,
 )
+from app.inference.clients import Completion
+from app.inference.router import InferenceRouter, UnredactedInputError
+from app.main import create_app
 from app.orchestrator.ingestion import IncomingEmail, ingest_email
+from app.privacy.crypto import Cipher
+from app.privacy.redaction import Redactor
 from app.rag.chunking import Document
 from app.rag.ingestion import ingest
 from app.rag.store import InMemoryVectorStore
@@ -34,6 +44,7 @@ from tests.helpers import (
     FakeLLM,
     incoming_email,
     logged_in,
+    store_email,
     valid_bsn,
 )
 
@@ -280,3 +291,75 @@ async def test_an_unknown_sender_has_no_case_history(
     stored, _ = await _stored(session_factory, email)
     assert stored.case_context == []
     assert "(geen eerdere zaken bekend)" in fake_llm.calls_for(DRAFT_PROMPT)[0][1]
+
+
+class _QualityModelIsDown(FakeLLM):
+    async def complete(self, *, system: str, user: str, json_mode: bool = False) -> Completion:
+        if system.startswith(QUALITY_PROMPT):
+            self.calls.append((system, user))
+            raise RuntimeError("model is down")
+        return await super().complete(system=system, user=user, json_mode=json_mode)
+
+
+async def test_a_failing_quality_check_keeps_the_draft_and_says_it_was_not_checked(
+    settings: Settings,
+    engine: AsyncEngine,
+    session_factory: Db,
+    fake_embedder: FakeEmbedder,
+    vector_store: InMemoryVectorStore,
+    redactor: Redactor,
+) -> None:
+    """The check is advisory: losing it must not cost the caseworker a usable draft."""
+    llm = _QualityModelIsDown()
+    llm.reply = "Geachte [PERSON_9],\n\nMet vriendelijke groet,\nGemeente"
+    app = create_app(
+        settings,
+        local_llm=llm,
+        embedder=fake_embedder,
+        vector_store=vector_store,
+        redactor=redactor,
+    )
+    async with app.router.lifespan_context(app):
+        email = await _run(app)
+
+    stored, draft = await _stored(session_factory, email)
+    assert stored.status is EmailStatus.DRAFT_READY
+    assert len(llm.calls_for(QUALITY_PROMPT)) == 3  # retried first, like any failure
+    # The rules still ran; the missing model check is said out loud.
+    assert [w["type"] for w in draft.warnings] == [
+        "no_source",
+        "unknown_placeholder",
+        "not_checked",
+    ]
+    async with session_factory() as session:
+        actions = list(
+            await session.scalars(
+                select(AuditEvent.action)
+                .where(AuditEvent.email_id == email.id)
+                .order_by(AuditEvent.id)
+            )
+        )
+    assert actions[-4:] == [
+        "quality.retried",
+        "quality.retried",
+        "quality.model_check_failed",
+        "quality.completed",
+    ]
+
+
+async def test_a_refusal_is_never_downgraded_to_a_missing_check(
+    session_factory: Db, cipher: Cipher, fake_llm: FakeLLM
+) -> None:
+    """Rule 1 outranks convenience: without a redaction record the quality agent fails,
+    also on its last attempt."""
+    agent = QualityAgent(router=InferenceRouter(local=fake_llm, cipher=cipher))
+    async with session_factory() as session:
+        email = await store_email(session, cipher, incoming_email())
+        session.add(Draft(email_id=email.id, text_redacted="Tekst", model_used="none"))
+        await session.flush()
+
+        with pytest.raises(UnredactedInputError):
+            await agent.run(
+                EmailContext(email.id, email.correlation_id, session, final_attempt=True)
+            )
+    assert fake_llm.calls == []

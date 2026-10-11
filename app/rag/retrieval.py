@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 from app.rag.bm25 import Bm25Index
 from app.rag.chunking import Chunk
@@ -6,6 +7,9 @@ from app.rag.store import VectorStore
 
 # The usual constant in reciprocal rank fusion; it damps the difference between ranks.
 _RRF_K = 60
+
+# "hybrid" is what the app uses. The other two run one method alone, to compare them.
+Method = Literal["hybrid", "semantic", "keyword"]
 
 
 @dataclass(frozen=True)
@@ -37,7 +41,12 @@ class Retriever:
         return self._keyword_index
 
     async def search(
-        self, query: str, query_embedding: list[float], *, topic: str | None
+        self,
+        query: str,
+        query_embedding: list[float],
+        *,
+        topic: str | None,
+        method: Method = "hybrid",
     ) -> list[RetrievedChunk]:
         candidates = self._top_k * 3
         keyword_index = await self._keywords()
@@ -50,15 +59,20 @@ class Retriever:
             )
             if similarity >= self._min_similarity
         ]
-        if not semantic:
+        if not semantic and method != "keyword":
             # Keyword matches alone are not evidence of relevance: any email shares a few
             # words with some page. Better no source than a wrong one.
             return []
         keyword = [
             self._chunks[chunk_id]
-            for chunk_id, _ in keyword_index.search(query, limit=candidates * 2)
+            # The index covers every topic, so ask for all matches and filter here.
+            for chunk_id, _ in keyword_index.search(query, limit=len(self._chunks))
             if topic is None or self._chunks[chunk_id].topic == topic
         ][:candidates]
+        if method == "semantic":
+            keyword = []
+        elif method == "keyword":
+            semantic = []
 
         # Reciprocal rank fusion: a cosine similarity and a BM25 score are on different
         # scales and cannot be added, but ranks can. Each list gives 1 / (k + rank).

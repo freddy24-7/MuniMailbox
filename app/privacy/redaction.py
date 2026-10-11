@@ -1,6 +1,6 @@
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import NewType
 
 from presidio_analyzer import AnalyzerEngine
@@ -68,6 +68,27 @@ def _without_overlaps(spans: list[Span]) -> list[Span]:
     return merged
 
 
+# What may follow a first name as the rest of the name: optional prefixes ("van de")
+# and one capitalised word. Same line only, and not an abbreviation such as "BSN".
+_REST_OF_NAME = re.compile(
+    r"(?: (?:van|de|den|der|ter|ten|te|het|'t|el|al|la|le))* [A-ZÀ-Ý][a-zà-ÿ][\w'-]*"
+)
+
+
+def _with_surname(span: Span, text: str) -> Span:
+    """Extend a one-word name over the surname that follows it.
+
+    NER knows first names better than surnames: an unusual surname, or one that is also
+    an ordinary word, is left standing next to the placeholder. A capitalised word
+    directly after a first name is taken to be part of the name. This can cost a word
+    that was not a name; that is the cheaper mistake.
+    """
+    if span.entity_type is not EntityType.PERSON or " " in text[span.start : span.end]:
+        return span
+    rest = _REST_OF_NAME.match(text, span.end)
+    return replace(span, end=rest.end()) if rest else span
+
+
 def _occurrences(value: str, text: str, *, ignore_case: bool) -> list[tuple[int, int]]:
     pattern = rf"(?<!\w){re.escape(value)}(?!\w)"
     return [m.span() for m in re.finditer(pattern, text, re.IGNORECASE if ignore_case else 0)]
@@ -106,7 +127,8 @@ class Redactor:
                 for known_value in known_values
                 for start, end in _occurrences(known_value.value, text, ignore_case=True)
             ]
-            spans_per_text.append(_without_overlaps(known + self._recognise(text)))
+            recognised_here = [_with_surname(span, text) for span in self._recognise(text)]
+            spans_per_text.append(_without_overlaps(known + recognised_here))
 
         recognised: dict[str, EntityType] = {}
         for text, spans in zip(texts, spans_per_text, strict=True):

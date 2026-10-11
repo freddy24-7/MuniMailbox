@@ -59,7 +59,9 @@ class Settings(BaseSettings):
     chunk_max_chars: int = 1200
     retrieval_top_k: int = 4
     # Cosine similarity below which a chunk does not count as relevant. Depends on the
-    # embedding model: measured for bge-m3, where related text scores 0.65+ and unrelated ~0.5.
+    # embedding model. Measured for bge-m3 with scripts/evaluate_retrieval.py: questions
+    # with an answer score 0.53-0.74, questions without one 0.41-0.59. The ranges overlap,
+    # so this is a trade-off: lower finds more answers and more wrong sources.
     retrieval_min_similarity: float = 0.55
 
     # A failed step is retried this many times before a human takes over (FR-3).

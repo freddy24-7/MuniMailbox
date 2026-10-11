@@ -149,3 +149,29 @@ cloud model. Redaction is the first pipeline step and the precondition for every
 **Still open**
 - Cities are redacted only when NER spots them, and are not labelled in the test set.
 - Precision is tested with a handful of sentences, not measured.
+
+### Stage 4 — 2026-10-11 (a surname left standing)
+
+**What was found**
+- In a case note, "Sanne Voorbeeld" became "[PERSON_1] Voorbeeld". NER recognised the
+  first name and read the surname as the ordinary word it also is.
+- The gate already showed the same pattern with a generated name ("Bjorn Moet").
+
+**Case first, then fix**
+- New slot `word_name` in the generator (a first name plus a surname from
+  `WORD_SURNAMES`: Bos, Vos, Kok, Prins, Koning, …), a template in
+  [hard_cases.py](../tests/pii_testset/hard_cases.py), and a test per surname in
+  [test_redaction.py](../tests/unit/test_redaction.py). The test for "Voorbeeld" failed.
+- Fix in [redaction.py](../app/privacy/redaction.py), `_with_surname`: a one-word name is
+  extended over the capitalised word that follows it, with prefixes such as "van de" in
+  between. Not across a line break, and not over an abbreviation such as "BSN".
+
+**Seen in practice**
+- Real word-surnames (Bos, Koning, Timmerman) were already caught; only the made-up one
+  was not. The fix matters for surnames the model has never seen.
+- Recall for other people: 98.7% → 99.1%. Recognizers alone: 98.5% → 98.8%.
+- Still missed: "Aylin van de Berg". There the *first* name is not recognised, so there
+  is nothing to extend from.
+- The trade-off is deliberate: "Hallo Sanne Kunt u ..." without a comma now loses the
+  word "Kunt". Losing a word is the cheaper mistake.
+- NER also over-redacts on its own: "Sanne van de gemeente" becomes one PERSON.

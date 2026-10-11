@@ -97,8 +97,52 @@ favour keyword search. Each catches what the other misses.
   `test_a_chunk_found_by_both_methods_ranks_first`.
 
 **Still open**
-- No measurement yet (recall@k on question → expected page pairs). Until there is one,
-  "hybrid is better" is an assumption.
+- ~~No measurement yet.~~ Measured the same day; see below.
 - The keyword index is built once per process: restart the app after re-ingesting.
 - Dutch compounds are not split, so "afvalcontainer" does not match "container".
-- The comparison mode itself (run one method only) is not built.
+- ~~The comparison mode is not built.~~ `Retriever.search(method=...)` runs one method alone.
+
+### Stage 4 — 2026-10-11 (measured)
+
+**What was built**
+- [data/retrieval_testset.toml](../data/retrieval_testset.toml): 29 made-up citizen
+  questions in everyday words, each with the page or pages that answer it.
+- [app/rag/evaluation.py](../app/rag/evaluation.py) and
+  [scripts/evaluate_retrieval.py](../scripts/evaluate_retrieval.py): run every question
+  through semantic, keyword and hybrid search and report recall@4 and MRR.
+
+**Seen in practice**
+
+| Method | Recall@4, within the topic | MRR | Recall@4, whole knowledge base | MRR |
+| --- | --- | --- | --- | --- |
+| Semantic | 83% | 0.78 | 83% | 0.74 |
+| Keyword | 79% | 0.73 | 72% | 0.61 |
+| Hybrid | 83% | 0.75 | 83% | 0.74 |
+
+- **Hybrid is not better than semantic search alone on this test set.** It finds the same
+  number of right pages and ranks them slightly lower within a topic. The assumption this
+  card started with did not survive its first measurement.
+- **The topic filter helps keyword search most** (72% → 79%): it removes pages that share
+  words but are about something else.
+- **Four of the five misses returned nothing at all.** The cause is the similarity floor,
+  not the search. Measured best similarity per question:
+  - questions that have an answer: 0.53 to 0.74;
+  - questions that have none (passport, wedding, swimming pool): 0.41 to 0.59.
+
+  The two ranges overlap, so no floor separates them:
+
+  | Floor | Recall@4 (within topic) | Off-topic questions that still get a source |
+  | --- | --- | --- |
+  | 0.55 (current) | 83% | 1 of 6 |
+  | 0.50 | 93% | 4 of 6 |
+  | 0.40 | 90% | 6 of 6 |
+
+- The grey-container question is still a miss at every floor: it gets the pages about
+  underground containers and fines, not "Kliko's" or "Ophaaldag".
+
+**Still open**
+- Which floor: more answers found, or fewer wrong sources? Left at 0.55 until decided.
+- 29 questions and 6 off-topic ones, written by one person from page titles. Enough to
+  see a pattern, too few to trust a difference of a few points.
+- Why hybrid does not help here: untested ideas are the stop-word list, unsplit Dutch
+  compounds, and questions deliberately written without the pages' own terms.

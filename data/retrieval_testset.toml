@@ -1,0 +1,217 @@
+# Retrieval test set: questions a citizen might ask, and the page(s) that answer them.
+# Used by scripts/evaluate_retrieval.py to compare semantic, keyword and hybrid search.
+#
+# The questions are made up for this project and contain no personal data. They are
+# written in everyday words on purpose ("grijze container", not "kliko"). The expected
+# pages were chosen from the page titles and headings in data/sources.toml; a case counts
+# as found when any passage from one of its expected pages is returned.
+
+[[case]]
+topic = "waste_collection"
+question = "Afgelopen week is de grijze container bij ons niet geleegd. Wanneer wordt dit alsnog gedaan?"
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/ophaaldag",
+  "https://www.utrecht.nl/wonen-en-leven/afval/klikos",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Op welke dag wordt het oud papier bij mij in de straat opgehaald?"
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/ophaaldag",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Mijn kliko is kapot, het deksel is eraf. Hoe krijg ik een nieuwe?"
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/klikos",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Ik heb een oude bank en een matras die weg moeten. Komt de gemeente die ophalen en wat kost dat?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/grofvuil-afspraak-maken-voor-ophalen",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Ik ben mijn afvalpas kwijt en kan de container in de straat niet meer openen."
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/ondergrondse-containers",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Waar kan ik zelf een kapotte koelkast en verfblikken naartoe brengen?"
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/afvalscheidingsstations",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Ik kreeg een bekeuring omdat mijn vuilniszak naast de container stond. Dat vind ik onterecht."
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/boete-voor-verkeerd-aangeboden-afval",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Mogen pizzadozen bij het papier of moeten ze bij het restafval?"
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/afval/welk-afval-in-welke-bak",
+]
+
+[[case]]
+topic = "waste_collection"
+question = "Ik heb de heg gesnoeid en zit met een berg takken. Haalt u die op?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/snoeiafval-afspraak-maken-voor-ophalen",
+]
+
+[[case]]
+topic = "permits"
+question = "Ik ben net in de binnenstad komen wonen en wil mijn auto voor de deur kunnen zetten. Hoe regel ik dat?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/parkeervergunning-bewoner-aanvragen",
+]
+
+[[case]]
+topic = "permits"
+question = "Ik heb een andere auto gekocht. Hoe zet ik het nieuwe kenteken op mijn vergunning?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/parkeervergunning-bewoner-kenteken-aanpassen",
+]
+
+[[case]]
+topic = "permits"
+question = "Hoe lang moet ik nog wachten voordat ik een parkeervergunning krijg?"
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/parkeren/bewoner/wachtlijst-parkeervergunning",
+]
+
+[[case]]
+topic = "permits"
+question = "Mijn ouders komen regelmatig op bezoek en betalen veel parkeergeld. Is daar een regeling voor?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/parkeerkorting-voor-bezoek-aanvragen",
+]
+
+[[case]]
+topic = "permits"
+question = "Wij willen een dakkapel op de voorkant van ons huis plaatsen. Hebben wij daar toestemming voor nodig?"
+expected = [
+  "https://www.utrecht.nl/wonen-en-leven/bouwen-en-verbouwen/u-wilt-bouwen-of-verbouwen",
+  "https://loket.digitaal.utrecht.nl/nl/producten/omgevingsvergunning-aanvragen",
+]
+
+[[case]]
+topic = "permits"
+question = "De buren hebben een vergunning aangevraagd voor een grote uitbouw. Hoe kan ik laten weten dat ik het er niet mee eens ben?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/omgevingsvergunning-reageren",
+]
+
+[[case]]
+topic = "benefits"
+question = "Ik ben mijn baan kwijt en heb geen inkomen meer. Kan ik een uitkering krijgen?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijstand-aanvragen",
+  "https://www.utrecht.nl/werk-en-inkomen/uitkeringen",
+]
+
+[[case]]
+topic = "benefits"
+question = "Op welke dag wordt de uitkering deze maand gestort?"
+expected = [
+  "https://www.utrecht.nl/werk-en-inkomen/uitkeringen/betaaldatums-uitkering",
+]
+
+[[case]]
+topic = "benefits"
+question = "Mijn wasmachine is stuk en ik heb geen geld voor een nieuwe. Kan de gemeente helpen?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijzondere-bijstand-aanvragen",
+  "https://www.utrecht.nl/werk-en-inkomen/geld-en-hulp-bij-rondkomen",
+]
+
+[[case]]
+topic = "benefits"
+question = "Ik heb de uitkering aangevraagd maar heb nu geen geld voor boodschappen. Kan ik alvast iets krijgen?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijstand-voorschot-aanvragen",
+]
+
+[[case]]
+topic = "benefits"
+question = "Ik heb al jaren een laag inkomen. Ik hoorde dat er een individuele inkomenstoeslag bestaat."
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/individuele-inkomenstoeslag-aanvragen",
+]
+
+[[case]]
+topic = "benefits"
+question = "Ik ga samenwonen met mijn vriendin. Moet ik dat melden voor mijn uitkering?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/bijstand-wijzigingen-doorgeven",
+]
+
+[[case]]
+topic = "complaints"
+question = "Ik ben aan de balie onbeschoft behandeld door een medewerker en wil daar iets van zeggen."
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/klacht-over-de-gemeente-doorgeven",
+  "https://www.utrecht.nl/contact/melding-klacht-bezwaar",
+]
+
+[[case]]
+topic = "complaints"
+question = "Ik ben het niet eens met het besluit dat ik heb ontvangen. Wat kan ik doen?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/bezwaar-maken",
+  "https://www.utrecht.nl/contact/melding-klacht-bezwaar",
+]
+
+[[case]]
+topic = "complaints"
+question = "Er ligt al weken een losse stoeptegel voor mijn deur. Waar geef ik dat door?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/meldingen",
+  "https://www.utrecht.nl/contact/melding-klacht-bezwaar",
+]
+
+[[case]]
+topic = "address_change"
+question = "Ik ga volgende maand verhuizen naar een andere wijk. Wat moet ik regelen?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/verhuizing-doorgeven",
+]
+
+[[case]]
+topic = "address_change"
+question = "Ik kom na vijf jaar in Spanje weer in Nederland wonen. Hoe schrijf ik mij in?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/inschrijven-vanuit-het-buitenland",
+]
+
+[[case]]
+topic = "address_change"
+question = "Ik heb tijdelijk geen eigen woning en slaap bij vrienden. Waar kan mijn post naartoe?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/briefadres-aanvragen",
+]
+
+[[case]]
+topic = "address_change"
+question = "Er staat nog iemand op mijn adres ingeschreven die hier niet meer woont."
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/onjuiste-inschrijving-op-uw-adres-melding-doen-adresonderzoek",
+]
+
+[[case]]
+topic = "other"
+question = "Ik heb voor de notaris een bewijs nodig van waar ik woon. Hoe kom ik daaraan?"
+expected = [
+  "https://loket.digitaal.utrecht.nl/nl/producten/uittreksel-of-akte-aanvragen",
+]

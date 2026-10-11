@@ -101,6 +101,17 @@ HARD_CASES: tuple[EmailTemplate, ...] = (
         "een doorlopende dakkapel. Ons adres is {street_address}.\n\n"
         "Met vriendelijke groeten,\n{name} en {other_name}",
     ),
+    # A surname that is also an ordinary word ("Bos", "Koning"), in running text as in a
+    # case note. Found in Stage 4: "Voorbeeld" was left standing after the first name.
+    EmailTemplate(
+        Topic.PERMITS,
+        Urgency.NORMAL,
+        "Aanvraag namens de buren",
+        "Geachte heer/mevrouw,\n\n"
+        "Ik dien de aanvraag voor de dakkapel in namens {other_word_name}, die naast mij "
+        "woont. Kunt u de ontvangst bevestigen?\n\n"
+        "Met vriendelijke groet,\n{name}",
+    ),
     # A nine-digit number that is not a BSN must survive (precision, not recall), next
     # to data that must go.
     EmailTemplate(

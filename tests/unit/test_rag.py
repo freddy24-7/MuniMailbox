@@ -1,7 +1,21 @@
+import tomllib
 from itertools import pairwise
+from pathlib import Path
+
+import pytest
 
 from app.rag.bm25 import Bm25Index, tokenize
 from app.rag.chunking import Chunk, Document, chunk_document
+from app.rag.evaluation import (
+    METHODS,
+    CaseResult,
+    RetrievalCase,
+    evaluate,
+    first_hit,
+    load_cases,
+    mean_reciprocal_rank,
+    recall,
+)
 from app.rag.html import extract
 from app.rag.ingestion import ingest
 from app.rag.retrieval import Retriever
@@ -186,3 +200,62 @@ async def test_ingesting_a_page_again_replaces_its_old_chunks() -> None:
 
     assert (first, second) == (2, 1)
     assert [chunk.text for chunk in await store.all_chunks()] == ["Grofvuil - A\nNieuw."]
+
+
+# --- Measuring retrieval ---
+
+WASTE = "https://gemeente.example/waste"
+PERMIT = "https://gemeente.example/permit"
+
+
+def test_first_hit_is_the_position_of_the_first_passage_from_an_expected_page() -> None:
+    assert first_hit(["a", "b", "c"], frozenset({"b", "c"})) == 2
+    assert first_hit(["a", "b"], frozenset({"x"})) is None
+    assert first_hit([], frozenset({"x"})) is None
+
+
+def test_recall_and_mean_reciprocal_rank() -> None:
+    case = RetrievalCase("vraag", "waste_collection", frozenset({"x"}))
+    results = [CaseResult(case, 1, ()), CaseResult(case, 4, ()), CaseResult(case, None, ())]
+
+    assert recall(results) == pytest.approx(2 / 3)
+    assert mean_reciprocal_rank(results) == pytest.approx((1 + 1 / 4 + 0) / 3)
+    assert (recall([]), mean_reciprocal_rank([])) == (0, 0)
+
+
+async def test_each_method_can_be_measured_on_its_own() -> None:
+    """A question whose words are on one page and whose meaning is on another: the two
+    methods disagree, and the evaluation shows which found the right page."""
+    store = await _store(
+        (_chunk("waste", "De kliko wordt op maandag geleegd."), [1.0, 0.0]),
+        (_chunk("permit", "Grijze container vergunning.", topic="permits"), [0.0, 1.0]),
+    )
+    embedder = FakeEmbedder()
+    embedder.vectors = {"Mijn grijze container is niet geleegd.": [1.0, 0.0]}
+    case = RetrievalCase(
+        "Mijn grijze container is niet geleegd.",
+        "waste_collection",
+        frozenset({WASTE}),
+    )
+    retriever = Retriever(store, top_k=1, min_similarity=0.5)
+
+    everywhere = await evaluate(retriever, embedder.embed, [case], use_topic=False)
+    in_topic = await evaluate(retriever, embedder.embed, [case], use_topic=True)
+
+    assert [everywhere[method][0].first_hit for method in METHODS] == [1, None, 1]
+    assert everywhere["keyword"][0].urls == (PERMIT,)
+    assert [in_topic[method][0].first_hit for method in METHODS] == [1, 1, 1]
+    assert len(embedder.calls) == 2  # each question is embedded once, not once per method
+
+
+def test_the_retrieval_test_set_only_expects_pages_that_are_in_the_knowledge_base() -> None:
+    root = Path(__file__).resolve().parents[2] / "data"
+    sources = tomllib.loads((root / "sources.toml").read_text(encoding="utf-8"))["source"]
+    by_topic = {group["topic"]: set(group["urls"]) for group in sources}
+    cases = load_cases(root / "retrieval_testset.toml")
+
+    assert len(cases) >= 25
+    for case in cases:
+        # Within its own topic too, or the case can never be found the way the app searches.
+        assert case.expected_urls & by_topic[case.topic], case.question
+        assert case.expected_urls <= set().union(*by_topic.values()), case.question

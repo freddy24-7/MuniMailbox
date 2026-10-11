@@ -6,12 +6,19 @@ from sqlalchemy import select
 
 from app.agents.base import AgentResult, EmailContext
 from app.agents.drafting import format_sources
+from app.audit import writer as audit
 from app.db.models import Draft, Email, PiiMapping
-from app.inference.router import InferenceRouter
+from app.inference.router import InferenceRouter, UnredactedInputError
 from app.privacy.redaction import RedactedText
 
 PROMPT_NAME = "quality.v1"
 MAX_MODEL_WARNINGS = 5
+NOT_CHECKED: dict[str, Any] = {
+    "type": "not_checked",
+    "message": "The automatic check of tone, completeness and unsupported claims failed. "
+    "Only the rule-based checks ran.",
+    "origin": "rule",
+}
 
 _PLACEHOLDER = re.compile(r"\[[A-Z_]+_\d+\]")
 # Amounts, durations and short phone numbers: the facts a wrong reply gets wrong.
@@ -76,6 +83,10 @@ class QualityAgent:
 
     Two kinds of check: rules, which are exact but narrow, and a second model call, which
     is broad but can itself be wrong. Warnings inform the caseworker; they block nothing.
+
+    The model check is advisory, so its failure does not cost the caseworker the draft:
+    when the last attempt fails, the rule checks still run and the draft is marked as not
+    checked by a model. A refusal by the router is never treated that way.
     """
 
     name = "quality"
@@ -99,24 +110,40 @@ class QualityAgent:
             )
         )
 
-        result = await self._router.complete_json(
-            ctx.session,
-            email_id=email.id,
-            actor=f"agent:{self.name}",
-            prompt_name=PROMPT_NAME,
-            variables={
-                "subject": RedactedText(email.subject_redacted or ""),
-                "body": RedactedText(email.body_redacted or ""),
-                # Written by a model that only saw redacted text.
-                "draft": RedactedText(draft.text_redacted),
-            },
-            public_context={"sources": format_sources(email.policy_context or [])},
-            schema=QualityReport,
-        )
-        model_warnings = [
-            {"type": finding.type, "message": finding.message, "origin": "model"}
-            for finding in result.output.warnings[:MAX_MODEL_WARNINGS]
-        ]
+        outcome = AgentResult()
+        try:
+            result = await self._router.complete_json(
+                ctx.session,
+                email_id=email.id,
+                actor=f"agent:{self.name}",
+                prompt_name=PROMPT_NAME,
+                variables={
+                    "subject": RedactedText(email.subject_redacted or ""),
+                    "body": RedactedText(email.body_redacted or ""),
+                    # Written by a model that only saw redacted text.
+                    "draft": RedactedText(draft.text_redacted),
+                },
+                public_context={"sources": format_sources(email.policy_context or [])},
+                schema=QualityReport,
+            )
+        except UnredactedInputError:
+            raise
+        except Exception:
+            if not ctx.final_attempt:
+                raise  # the orchestrator retries
+            await audit.record(
+                ctx.session,
+                actor=f"agent:{self.name}",
+                action="quality.model_check_failed",
+                email_id=email.id,
+            )
+            model_warnings = [NOT_CHECKED]
+        else:
+            outcome = AgentResult(model=result.model, left_local=result.left_local)
+            model_warnings = [
+                {"type": finding.type, "message": finding.message, "origin": "model"}
+                for finding in result.output.warnings[:MAX_MODEL_WARNINGS]
+            ]
         # Reassigned, not appended to: SQLAlchemy does not notice changes inside a JSON list.
         draft.warnings = [
             *draft.warnings,
@@ -124,4 +151,4 @@ class QualityAgent:
             *model_warnings,
         ]
         await ctx.session.flush()
-        return AgentResult(model=result.model, left_local=result.left_local)
+        return outcome

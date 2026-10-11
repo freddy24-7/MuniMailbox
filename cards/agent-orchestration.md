@@ -97,10 +97,10 @@ Each agent records a duration histogram and a failure counter.
   instead of agents. A step is one agent, or a tuple of agents that run together:
 
   ```python
-  steps=[
+  steps = [
       PrivacyAgent(...),
       IntakeAgent(...),
-      (PolicyAgent(...), CaseAgent(...)),   # at the same time
+      (PolicyAgent(...), CaseAgent(...)),  # at the same time
       DraftingAgent(...),
       QualityAgent(...),
   ]
@@ -150,5 +150,9 @@ Each agent records a duration histogram and a failure counter.
 
 **Still open**
 - No recovery for emails stuck in "processing" after a crash (Stage 5, Redis Streams).
-- Should a failing quality check discard a usable draft, or attach a "not checked" warning?
+- ~~Should a failing quality check discard a usable draft?~~ Decided the same day: no.
+  The model check is advisory. `EmailContext.final_attempt` tells an agent that a failure
+  now would not be retried; the quality agent then keeps the draft, runs its rule checks,
+  adds a `not_checked` warning and writes a `quality.model_check_failed` audit event. A
+  refusal by the router is never downgraded this way.
 - Per-agent Prometheus metrics (Stage 6).

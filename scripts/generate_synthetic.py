@@ -35,6 +35,7 @@ _BASE_SLOTS: dict[str, EntityType] = {
     "name": EntityType.PERSON,
     "first_name": EntityType.PERSON,
     "name_lower": EntityType.PERSON,
+    "word_name": EntityType.PERSON,
     "street_address": EntityType.ADDRESS,
     "plain_street_address": EntityType.ADDRESS,
     "postcode": EntityType.POSTCODE,
@@ -56,6 +57,14 @@ SLOT_ENTITY: dict[str, EntityType] = _BASE_SLOTS | {
 
 # Street names without a typical ending such as -straat or -laan.
 PLAIN_STREETS = ("Kerkbuurt", "Oosteinde", "Achterom", "Nieuwe Haven", "Lange Voorhout", "Brink")
+# Surnames that are also ordinary Dutch words, which a name recognizer may read as the word.
+WORD_SURNAMES = ("Bos", "Vos", "Kok", "Prins", "Koning", "Brouwer", "Timmerman", "Voorbeeld")
+
+
+def name_with_word_surname(name: str) -> str:
+    """The person's first name with a surname from WORD_SURNAMES. Derived from the name
+    itself, not drawn at random, so adding it did not change what a seed generates."""
+    return f"{name.split()[0]} {WORD_SURNAMES[sum(map(ord, name)) % len(WORD_SURNAMES)]}"
 
 
 @dataclass(frozen=True)
@@ -362,6 +371,7 @@ def _slot_values(citizen: SyntheticCitizen, rng: random.Random) -> dict[str, str
         **{key: str(value) for key, value in asdict(citizen).items()},
         "first_name": citizen.name.split()[0],
         "name_lower": citizen.name.lower(),
+        "word_name": name_with_word_surname(citizen.name),
         "plain_street_address": f"{rng.choice(PLAIN_STREETS)} {rng.randint(1, 180)}",
         "postcode_lower": citizen.postcode.lower(),
         "bsn_dotted": f"{bsn[:4]}.{bsn[4:6]}.{bsn[6:]}",

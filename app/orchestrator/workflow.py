@@ -94,7 +94,9 @@ class Orchestrator:
         for attempt in range(self._max_retries + 1):
             started = time.perf_counter()
             try:
-                ran = await self._run_once(event, agent, final)
+                ran = await self._run_once(
+                    event, agent, final, final_attempt=attempt == self._max_retries
+                )
             except UnredactedInputError as error:
                 # Deterministic: the same input would be refused again.
                 await self._fail(event, agent, error, action="inference.refused")
@@ -122,7 +124,9 @@ class Orchestrator:
             return ran
         return False
 
-    async def _run_once(self, event: Event, agent: Agent, final: bool) -> bool:
+    async def _run_once(
+        self, event: Event, agent: Agent, final: bool, *, final_attempt: bool
+    ) -> bool:
         async with self._session_factory() as session:
             email = await session.get_one(Email, event.email_id)
             if email.status not in (EmailStatus.RECEIVED, EmailStatus.PROCESSING):
@@ -130,7 +134,9 @@ class Orchestrator:
             if email.status is EmailStatus.RECEIVED:
                 transition(email, EmailStatus.PROCESSING)
 
-            result = await agent.run(EmailContext(email.id, email.correlation_id, session))
+            result = await agent.run(
+                EmailContext(email.id, email.correlation_id, session, final_attempt)
+            )
 
             if final:
                 transition(email, EmailStatus.DRAFT_READY)

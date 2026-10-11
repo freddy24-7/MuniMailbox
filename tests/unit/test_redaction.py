@@ -1,5 +1,8 @@
+import pytest
+
 from app.privacy.entities import EntityType
 from app.privacy.redaction import KnownValue, Redactor
+from scripts.generate_synthetic import WORD_SURNAMES
 from tests.helpers import BSN, IBAN, POSTCODE, SENDER
 
 
@@ -64,3 +67,26 @@ def test_overlapping_detections_are_merged_not_chosen_between(redactor: Redactor
     known = [KnownValue(EntityType.ADDRESS, "Kerkstraat")]
     (redacted,) = redactor.redact(["Ik woon op Kerkstraat 12 in het centrum."], known).texts
     assert redacted == "Ik woon op [ADDRESS_1] in het centrum."
+
+
+@pytest.mark.parametrize("surname", WORD_SURNAMES)
+def test_a_surname_that_is_an_ordinary_word_goes_with_its_first_name(
+    redactor: Redactor, surname: str
+) -> None:
+    """Found in Stage 4, in a case note: "Voorbeeld" was left standing after "[PERSON_1]"."""
+    result = redactor.redact([f"Aanvraag dakkapel van Sanne {surname}, namens de buren."])
+    assert result.texts == ["Aanvraag dakkapel van [PERSON_1], namens de buren."]
+
+
+def test_a_surname_with_a_prefix_goes_with_its_first_name(redactor: Redactor) -> None:
+    result = redactor.redact(["De aanvraag is van Sanne van de Voorbeeld, mijn buurvrouw."])
+    assert result.texts == ["De aanvraag is van [PERSON_1], mijn buurvrouw."]
+
+
+def test_words_after_a_first_name_that_are_not_a_surname_are_kept(redactor: Redactor) -> None:
+    for text, kept in (
+        ("Ik heb Sanne gisteren gesproken over de vergunning.", "gisteren"),
+        ("Aanvraag van Sanne. Kunt u de ontvangst bevestigen?", "Kunt u"),
+        ("Uitkering van Sanne BSN onbekend.", "BSN onbekend"),
+    ):
+        assert kept in redactor.redact([text]).texts[0], text
