@@ -4,13 +4,13 @@
 <p><form method="post" action="/intake/next"><button>Fetch next email from the feed</button></form></p>
 <form method="get" action="/queue" class="block">
   <label>Topic
-    <select name="topic">
+    <select name="topic" onchange="this.form.requestSubmit()">
       <option value="">All</option>
       {% for option in topics %}<option value="{{ option.value }}"{% if option == topic %} selected{% endif %}>{{ option.value.replace("_", " ") }}</option>{% endfor %}
     </select>
   </label>
   <label>Status
-    <select name="status">
+    <select name="status" onchange="this.form.requestSubmit()">
       <option value="">All</option>
       {% for option in statuses %}<option value="{{ option.value }}"{% if option == status %} selected{% endif %}>{{ option.value.replace("_", " ") }}</option>{% endfor %}
     </select>

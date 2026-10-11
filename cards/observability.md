@@ -136,7 +136,9 @@ A real line from the running app:
 **Try it**
 - `docker compose --profile monitoring up -d`, start the app, fetch an email, then open
   Grafana on http://localhost:3000 (admin / admin) → "Agent performance", and paste the
-  email's correlation ID in the box at the top.
+  email's ID in the box at the top (the last part of its review page's address). The
+  panel was first built around the correlation ID, which no page of the app shows; every
+  log line carries both, so it now searches by the ID a user can actually copy.
 - `curl -s localhost:8000/metrics | grep munimailbox_emails`
 
 **Still open**

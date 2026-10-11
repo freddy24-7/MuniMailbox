@@ -206,6 +206,9 @@ async def test_the_audit_log_can_be_searched_per_email_user_and_action(
     # This email: received, 9 pipeline events, approved, outbox. No views: nobody opened it.
     assert _rows(per_email) == 12
     assert str(unchanged) in per_email
+    # Already filtered to this email: its ID is text, not a link back to the same page.
+    assert f'<a href="/audit?email={unchanged}"' not in per_email
+    assert f'<a href="/audit?email={unchanged}"' in everything
     # The caseworker: one login, two approvals, one edit.
     assert _rows(per_user) == 4
     assert "privacy.completed" not in per_user

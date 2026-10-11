@@ -14,8 +14,8 @@
   "templating": {
     "list": [
       {
-        "name": "correlation_id",
-        "label": "Correlation ID",
+        "name": "email_id",
+        "label": "Email ID",
         "type": "textbox",
         "query": "",
         "current": {
@@ -169,7 +169,7 @@
       "id": 5
     },
     {
-      "title": "One email's journey (paste its correlation ID above)",
+      "title": "One email's journey (paste its ID in the box above)",
       "type": "logs",
       "datasource": {
         "type": "loki",
@@ -188,10 +188,10 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{job=\"munimailbox\"} | json | correlation_id=\"$correlation_id\" | line_format \"{{.event}}  agent={{.agent}}  duration_ms={{.duration_ms}}  model={{.model}}  left_local={{.left_local}}\""
+          "expr": "{job=\"munimailbox\"} | json | email_id=\"$email_id\" | line_format \"{{.event}}  agent={{.agent}}  duration_ms={{.duration_ms}}  model={{.model}}  left_local={{.left_local}}\""
         }
       ],
-      "description": "Every log line of one email, in order. The correlation ID is in the audit log's email link and in every log line.",
+      "description": "Every log line of one email, in order. The email ID is the last part of the address of its review page, and the link in the audit log. Each line also carries the email's correlation_id.",
       "options": {
         "showTime": true,
         "wrapLogMessage": true,

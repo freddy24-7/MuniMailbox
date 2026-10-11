@@ -93,3 +93,22 @@ def test_a_team_lead_gets_the_numbers_but_no_approve_button(page: Page) -> None:
     expect(page.get_by_text("Only a caseworker can approve a draft.")).to_be_visible()
     expect(page.get_by_role("button", name="Approve and send")).to_have_count(0)
     expect(page.get_by_role("button", name="Reassign")).to_be_visible()
+
+
+def test_picking_a_filter_updates_the_queue_without_pressing_a_button(page: Page) -> None:
+    _log_in(page, "caseworker")
+    page.get_by_role("button", name="Fetch next email from the feed").click()
+    expect(page.get_by_role("row", name=re.compile("draft ready|approved")).first).to_be_visible(
+        timeout=30_000
+    )
+
+    page.get_by_label("Status").select_option("rejected")
+    expect(page).to_have_url(re.compile(r"status=rejected"))
+    expect(page.get_by_text("No emails yet.")).to_be_visible()
+    expect(page.get_by_label("Status")).to_have_value("rejected")  # the choice is kept
+
+    page.get_by_label("Status").select_option("")
+    expect(page.get_by_role("row", name=re.compile("draft ready|approved")).first).to_be_visible()
+    page.get_by_label("Topic").select_option("permits")
+    expect(page).to_have_url(re.compile(r"topic=permits"))
+    expect(page.get_by_text("No emails yet.")).to_be_visible()  # the test emails are "other"

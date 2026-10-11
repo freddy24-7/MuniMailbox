@@ -25,9 +25,9 @@
   <tr>
     <td>{{ event.id }}</td>
     <td>{{ event.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-    <td>{% if event.actor in names %}<a href="/audit?actor={{ event.actor }}">{{ names[event.actor] }}</a>{% else %}{{ event.actor }}{% endif %}</td>
+    <td>{% if event.actor not in names %}{{ event.actor }}{% elif actor == event.actor %}{{ names[event.actor] }}{% else %}<a href="/audit?actor={{ event.actor }}" title="Show only this person's actions">{{ names[event.actor] }}</a>{% endif %}</td>
     <td>{{ event.action }}</td>
-    <td>{% if event.email_id %}<a href="/audit?email={{ event.email_id }}">{{ event.email_id }}</a>{% else %}—{% endif %}</td>
+    <td>{% if not event.email_id %}—{% elif email == event.email_id | string %}{{ event.email_id }}{% else %}<a href="/audit?email={{ event.email_id }}" title="Show only this email's events">{{ event.email_id }}</a>{% endif %}</td>
     <td>{{ event.model or "—" }}</td>
     <td>{{ "yes" if event.left_local else "no" }}</td>
     <td><code>{{ event.hash[:12] }}…</code></td>
